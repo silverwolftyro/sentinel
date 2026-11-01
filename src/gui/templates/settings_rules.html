@@ -1,0 +1,159 @@
+{# v3.7.0 —— 设置子页面：L1 规则管理
+ *
+ * 这一页是 **L1 规则的唯一权威界面**：
+ *   规则清单表格（规则名 / 匹配内容 / 风险等级 / 动作 / 开关）
+ *   + 全量导入导出（JSON / YAML）
+ *
+ * ⚠️ v3.6.x 的这一页只有「高危命令正则」文本框 + 八个红线类别勾选框，
+ *    其中**四个是死控件**（提权 / 网络变更 / 清历史 / 读凭据）——
+ *    它们从来就没有对应的判定逻辑，勾上也不生效。
+ *    v3.7.0 起只列**真实存在**的规则，死控件整块移除。
+ #}
+{% extends "settings_base.html" %}
+
+{% block title %}哨兵 Sentinel · 设置 · L1 规则{% endblock %}
+{% block subtitle %}L1 规则 · 逐条开关 · 导入导出{% endblock %}
+
+{% block content %}
+  <section class="panel settings-page" id="section-rules">
+    <div class="panel__head">
+      <h2 class="panel__title">④ L1 规则</h2>
+      <span class="panel__hint">逐条开关 · 拦截 / 仅记录 · 导入导出</span>
+    </div>
+    <div class="panel__body settings-section__body">
+
+      <!-- ================================================================
+       * 一、总开关与拦截策略
+       * ================================================================ -->
+      <div class="settings-grid">
+        <div class="settings-field">
+          <span class="settings-label">L1 命中后的拦截策略</span>
+          <select class="settings-select" id="rules-l1-action">
+            <option value="red_line_only">只拦红线级（默认 · 等同旧行为）</option>
+            <option value="suspend">直接挂起（高危命令命中即挂起）</option>
+            <option value="alert">只告警不挂起</option>
+            <option value="escalate">放行给 L2 二次判断</option>
+          </select>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">热重载间隔（秒，只读）</span>
+          <span class="settings-static" id="rules-hot-reload-interval">–</span>
+        </div>
+      </div>
+
+      <div class="settings-checks">
+        <label class="settings-check">
+          <input type="checkbox" id="rules-enabled">
+          <span class="settings-check__label">启用 L1 规则检测</span>
+        </label>
+        <label class="settings-check">
+          <input type="checkbox" id="rules-hot-reload-enabled">
+          <span class="settings-check__label">规则热重载（改完立即生效）</span>
+        </label>
+        <label class="settings-check">
+          <input type="checkbox" id="rules-catastrophic-enabled">
+          <span class="settings-check__label">
+            启用红线级判定（红线 = 守护者模式的唯一触发源）
+          </span>
+        </label>
+      </div>
+
+      <p class="settings-note">
+        拦截策略只改 <strong>L1 命中之后做什么</strong>，
+        <strong>不改变任何判定规则、阈值与告警口径</strong> ——
+        哪些命令算高危、哪些算红线，与 v3.6.x 一字未改。
+      </p>
+
+      <!-- ================================================================
+       * 二、规则清单表格
+       * ================================================================ -->
+      <div class="settings-field">
+        <span class="settings-label" id="rules-table-label">
+          规则清单（共 <span id="rules-table-count">–</span> 条）
+        </span>
+        <table class="settings-table" aria-labelledby="rules-table-label">
+          <thead>
+            <tr>
+              <th scope="col">规则名</th>
+              <th scope="col">匹配内容</th>
+              <th scope="col">风险等级</th>
+              <th scope="col">命中动作</th>
+              <th scope="col">启用</th>
+            </tr>
+          </thead>
+          <tbody id="rules-table-body">
+            <tr>
+              <td colspan="5">正在读取规则清单…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="settings-note">
+        开关关掉 = 这条规则<strong>完全不参与判定</strong>；
+        「仅记录」= 命中照样出告警，但严重度降为标准级，
+        <strong>不会触发守护者挂起</strong>。
+        改完点下面的<strong>保存并应用</strong>，规则会立刻热重载，不必重启哨兵。
+      </p>
+
+      <!-- ================================================================
+       * 三、额外高危命令正则
+       * ================================================================ -->
+      <label class="settings-field">
+        <span class="settings-label">额外高危命令正则（一行一条）</span>
+        <textarea class="settings-textarea" id="rules-dangerous-commands"
+                  spellcheck="false" placeholder="\brm\s+-rf"></textarea>
+      </label>
+      <p class="settings-note">
+        这里是<strong>追加</strong>到上表之外的额外正则 ——
+        上表 18 条内置高危规则已经覆盖了
+        rm -rf / sudo / chmod 777 / git push -f 等常见高危操作。
+        ⚠️ 这里加的正则<strong>没有开关</strong>，要停用请在上表里关掉对应条目
+        或改用「导入 / 导出」里的自定义规则（可逐条开关）。
+      </p>
+
+      <!-- ================================================================
+       * 四、导入 / 导出
+       * ================================================================ -->
+      <div class="settings-field">
+        <span class="settings-label">全量导入 / 导出</span>
+        <div class="settings-toolbar">
+          <button type="button" class="btn btn--ghost btn--sm" id="rules-export-json">
+            导出 JSON
+          </button>
+          <button type="button" class="btn btn--ghost btn--sm" id="rules-export-yaml">
+            导出 YAML
+          </button>
+          <button type="button" class="btn btn--ghost btn--sm" id="rules-copy-export">
+            复制导出内容
+          </button>
+          <button type="button" class="btn btn--primary btn--sm" id="rules-import-button">
+            导入并热重载
+          </button>
+        </div>
+        <textarea class="settings-textarea" id="rules-export-text"
+                  readonly spellcheck="false"
+                  placeholder="点「导出 JSON」后，这里会出现当前全部规则。"></textarea>
+        <span class="settings-label">导入内容（JSON 或 YAML）</span>
+        <textarea class="settings-textarea" id="rules-import-text"
+                  spellcheck="false"
+                  placeholder='粘贴 JSON 或 YAML，例如 {"rules": [{"id": "custom.my_rule", "name": "我的规则", "pattern": "\\bfoo\\b"}]}'
+                  style="min-height: 120px"></textarea>
+        <div class="settings-result" id="rules-import-result" role="status"></div>
+      </div>
+
+      <p class="settings-note settings-note--warn">
+        ⚠️ 导入会<strong>整体替换</strong>当前的关闭状态、降级状态与自定义规则；
+        内置规则本体不可被导入改写（它们由代码定义）。
+        ⚠️ 自定义规则只能是「高危命令」——
+        红线与死循环是结构化判定，一条正则表达不出来，
+        导入时会明确报错并跳过，不会「假装收下了」。
+      </p>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/settings_common.js" defer></script>
+<script src="/static/settings_rules.js" defer></script>
+{% endblock %}

@@ -1,0 +1,120 @@
+{
+  "watchdog": {
+    "base_url": "http://127.0.0.1:8888/v1",
+    "steps": [
+      {
+        "step": "before",
+        "ok": true,
+        "detail": "引擎正在处理请求，本拍跳过。"
+      },
+      {
+        "step": "killed",
+        "pids": [
+          9188
+        ]
+      },
+      {
+        "step": "offline",
+        "detected": true,
+        "reason": "[CRITICAL] NInfer 引擎已掉线！L2 判定和解释已停用！（地址 http://127.0.0.1:8888/v1，最近一次心跳：出错了：RemoteDisconnected: Remote end closed connection without response）"
+      },
+      {
+        "step": "restarted",
+        "ready": true
+      },
+      {
+        "step": "recovered",
+        "detected": true,
+        "reason": "[OK] NInfer 引擎已恢复！L2 判定和解释重新可用。（地址 http://127.0.0.1:8888/v1，探活耗时 1 毫秒）"
+      }
+    ],
+    "alerts": [
+      {
+        "alert_id": "engine-1793241235085",
+        "timestamp": 1793241235.0859764,
+        "verdict": "ENGINE_OFFLINE",
+        "level": "critical",
+        "rule_id": "engine_offline",
+        "reason": "[CRITICAL] NInfer 引擎已掉线！L2 判定和解释已停用！（地址 http://127.0.0.1:8888/v1，最近一次心跳：出错了：RemoteDisconnected: Remote end closed connection without response）",
+        "evidence": "出错了：RemoteDisconnected: Remote end closed connection without response",
+        "severity": "standard",
+        "category": "engine_health",
+        "source": "engine_watchdog",
+        "event_type": "engine_health",
+        "tool": "",
+        "command": "",
+        "arguments": {},
+        "agent": "",
+        "task_goal": "",
+        "triggers": [
+          "engine_offline"
+        ],
+        "token_usage": {}
+      },
+      {
+        "alert_id": "engine-1793241250249",
+        "timestamp": 1793241250.249899,
+        "verdict": "ENGINE_RECOVERED",
+        "level": "info",
+        "rule_id": "engine_recovered",
+        "reason": "[OK] NInfer 引擎已恢复！L2 判定和解释重新可用。（地址 http://127.0.0.1:8888/v1，探活耗时 1 毫秒）",
+        "evidence": "已连通（HTTP 200）。",
+        "severity": "standard",
+        "category": "engine_health",
+        "source": "engine_watchdog",
+        "event_type": "engine_health",
+        "tool": "",
+        "command": "",
+        "arguments": {},
+        "agent": "",
+        "task_goal": "",
+        "triggers": [
+          "engine_offline"
+        ],
+        "token_usage": {}
+      }
+    ]
+  },
+  "timebox": {
+    "window_minutes": 0.1,
+    "min_repeats": 3,
+    "alert": {
+      "alert_id": "1793241258258-000001",
+      "timestamp": 1793241258.2582617,
+      "verdict": "TIMEBOX",
+      "level": "critical",
+      "rule_id": "timebox_exceeded",
+      "reason": "[CRITICAL] 严重跑偏：同一条命令「pip install -r requirements.txt」重复了 3 次，已经耗时 0.1 分钟（时间盒 0.1 分钟）。子任务在吃掉整轮 —— 先停一停，确认它还在做主线任务。",
+      "evidence": "pip install -r requirements.txt\npip install -r requirements.txt\npip install -r requirements.txt",
+      "severity": "standard",
+      "category": "timebox",
+      "source": "mcode",
+      "event_type": "tool_call",
+      "tool": "shell",
+      "command": "pip install -r requirements.txt",
+      "arguments": {
+        "command": "pip install -r requirements.txt"
+      },
+      "agent": "",
+      "task_goal": "",
+      "triggers": [
+        "timebox_exceeded"
+      ],
+      "token_usage": {
+        "session_id": "",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_tokens": 0,
+        "estimated_tokens": 24,
+        "total_tokens": 24,
+        "events": 3,
+        "avg_per_event": 8.0,
+        "estimated": true
+      },
+      "explanation": "",
+      "explanation_degraded": false,
+      "explanation_pending": false
+    }
+  },
+  "created_at": 1793241258.2622774
+}

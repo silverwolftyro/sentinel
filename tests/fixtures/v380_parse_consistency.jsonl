@@ -1,0 +1,13 @@
+{"type":"tool_call","tool_call":{"name":"Read","arguments":{"file_path":"core/auth.py"}}}
+{"type":"tool_call","tool":{"name":"Write","arguments":{"file_path":"core/users.py","content":"x"}}}
+{"type":"item.completed","item":{"type":"tool_call","toolCall":{"id":"call_v6_read_1","name":"Read","input":{"file_path":"core/roles.py"}}}}
+{"type":"item.started","item":{"type":"tool_call","toolCall":{"id":"call_v6_bash_1","name":"Bash"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"先读一下配置"},{"type":"tool_use","id":"toolu_v380_1","name":"Read","input":{"file_path":"core/auth.py"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"跑个测试"},{"type":"tool_use","id":"toolu_v380_2","name":"Bash","input":{"command":"pytest -q"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_v380_3","name":"Edit","input":{"file_path":"core/deps.py","old_string":"a","new_string":"b"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_v380_1","content":"ok"}]}}
+{"type":"item.completed","item":{"type":"reasoning","content":"Verified."}}
+{"type":"user_message","content":"帮我看看认证模块"}
+{"type":"tool-call","tool_call":{"name":"Grep","arguments":{"pattern":"TODO"}}}
+{"type":"tool_call","toolName":{"name":"Glob","input":{"pattern":"*.py"}}}
+{"type":"tool_call","functionCall":{"name":"Shell","arguments":{"command":"dir"}}}

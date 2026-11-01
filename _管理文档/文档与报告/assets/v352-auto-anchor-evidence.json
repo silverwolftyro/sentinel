@@ -1,0 +1,64 @@
+{
+  "version": "v3.5.2",
+  "port": 8152,
+  "demo_log": "mcode.jsonl",
+  "radar_session": "D:\\项目\\<项目目录>\\logs\\v352-demo\\radar-root\\mcode\\2026\\10\\30\\14-31-44-demo\\messages.jsonl",
+  "expected_goal": "请帮我把 src/core/auth.py 的登录逻辑重构一遍，并补上对应的单元测试。",
+  "middle_panel_layout": {
+    "geometry": {
+      "panel_display": "flex",
+      "panel_direction": "column",
+      "body_flex": "1 1 auto",
+      "body_overflow_y": "auto",
+      "audit_position": "static",
+      "audit_flex": "0 0 auto",
+      "audit_height": 200,
+      "audit_overflow": "hidden",
+      "lines_overflow_y": "auto",
+      "z_alerts_panel": "auto",
+      "z_alerts_body": "auto",
+      "z_audit": "auto",
+      "z_audit_head": "auto",
+      "z_alert_card": "auto",
+      "alerts_rect": {
+        "top": 282,
+        "bottom": 751,
+        "height": 469
+      },
+      "audit_rect": {
+        "top": 751,
+        "bottom": 951,
+        "height": 200
+      },
+      "card_bottom": 495,
+      "overlap_px": 0,
+      "card_overlap_px": 0,
+      "alert_cards": 2,
+      "audit_lines": 10
+    },
+    "no_overlap": true,
+    "audit_is_static_flow_row": true,
+    "no_z_index_in_middle_panel": true,
+    "screenshot": "v352-layout-split.png"
+  },
+  "auto_anchor": {
+    "anchor_shown_in_radar": true,
+    "anchor_text": "请帮我把 src/core/auth.py 的登录逻辑重构一遍，并补上对应的单元测试。",
+    "anchor_tag": "[自动提取]",
+    "anchor_matches_user_words": true,
+    "api_task_goal": "请帮我把 src/core/auth.py 的登录逻辑重构一遍，并补上对应的单元测试。",
+    "api_task_goal_matches": true,
+    "api_session_found": true,
+    "screenshot": "v352-auto-anchor.png",
+    "attached": true,
+    "session_goal_source": "auto",
+    "session_auto_anchored": true,
+    "session_goal": "请帮我把 src/core/auth.py 的登录逻辑重构一遍，并补上对应的单元测试。",
+    "session_switched": true,
+    "session_auto_tag": "[自动提取]",
+    "drift_events_appended": 24,
+    "drift_alert_found": true,
+    "drift_alert_text": "DRIFTintent_drift意图漂移IntentTracker19:56:47[WARNING] 意图漂移：Agent 可能偏离了原始任务第1步 [思考] 顺手把主题色从蓝色换成红色，再调一下圆角。\n第2步 [Edit] file_path=web/src/styles/theme.css\n第3步 [思考] 顺手把主题色从蓝色换成红色，再调一下圆角。\n第4步 [Edit] file_path=web/src/styles/theme.css\n第5步 [思考] 顺手把主题色从蓝色换成红色，再调一下圆角。模型解释生成中…💰本次异常已拦截，预估为您挽回 357 Token 的无效消耗复制纠偏提示发送给 Agent守护者未启用 · 按钮不可用",
+    "drift_screenshot": "v352-auto-anchor-drift.png"
+  }
+}

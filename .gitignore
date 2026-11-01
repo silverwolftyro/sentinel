@@ -1,0 +1,82 @@
+# ---------- Python 缓存与构建产物 ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+pip-wheel-metadata/
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- 环境变量与本地密钥 ----------
+.env
+.env.*
+!.env.example
+
+# ---------- 运行时日志与截获的 JSONL 数据 ----------
+/logs/*
+!/logs/.gitkeep
+
+# ---------- 本地配置（含机器路径、阈值与密钥） ----------
+/config/config.yaml
+/config/config.local.yaml
+/config/*.local.yaml
+
+# ---------- 挂载会话的持久化状态（v3.1.0） ----------
+# 这是哨兵自己写的运行时状态：记录当前盯了哪些 Agent 日志。
+# 它跟着本机走、跟着用户走，不该进版本库。
+/config/attached_sessions.json
+
+# ---------- 测试与覆盖率产物 ----------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# ---------- 编辑器与操作系统 ----------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 回收站 ----------
+# 这里是「临时垃圾」的指定去处：确认没用的文件往这儿扔，
+# 不会被版本管理，也不占根目录。定期清空即可。
+/回收站/*
+!/回收站/README.md
+
+# ---------- 发布前安全审查（v4.3.1） ----------
+# 1) 本机真实交互日志（含敏感上下文，严禁入库）
+/2026-10-31.txt
+
+# 2) 第三方 Agent Bridge 参考库（仅作参考，不入库）
+/third_party_agent_bridge/
+
+# 3) 本机资产文档
+/_管理文档/资产文档/*
+!/_管理文档/资产文档/项目概览-Overview.md
+# ---------- 备份与归档区（_备份与归档/） ----------
+# 已退出主线的旧实现、外部项目副本、大体积历史数据都放在这里。
+# 它不属于哨兵源码，只供考古与比对 —— 一律不入库。
+/_备份与归档/*
+!/_备份与归档/README.md
+
+# ---------- 历史插件参考归档（旧路径，v0.5.0 前位于根目录） ----------
+# dsh-speak-human工作区/ 是早期插件的完整副本（含 node_modules、tgz 打包件、
+# 历史版本发布物），只作为 Prompt 与规则的参考来源，不属于哨兵源码。
+# v0.5.0 起它已被整体移入归档区，此处保留规则以防旧副本残留。
+dsh-speak-human工作区/
+

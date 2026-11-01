@@ -1,0 +1,73 @@
+{
+  "port": 8142,
+  "mode": "source",
+  "exe": "",
+  "dpi_aware": true,
+  "command": [
+    "C:\\Python314\\python.exe",
+    "-m",
+    "src.gui.server",
+    "--radar",
+    "--config",
+    "D:\\项目\\<项目目录>\\logs\\v340-demo\\config.yaml",
+    "--alert-log",
+    "D:\\项目\\<项目目录>\\logs\\v340-demo\\alert.log",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8142",
+    "--no-browser",
+    "--no-health",
+    "--no-guardian"
+  ],
+  "tray_found": true,
+  "tray_windows": [
+    27920820,
+    2623466
+  ],
+  "menu_shown": true,
+  "menu_items": [
+    {
+      "text": "打开看板",
+      "id": 1,
+      "rect": [
+        1046,
+        624,
+        1186,
+        646
+      ]
+    },
+    {
+      "text": "",
+      "id": 0,
+      "rect": [
+        1046,
+        646,
+        1186,
+        655
+      ]
+    },
+    {
+      "text": "彻底退出",
+      "id": 3,
+      "rect": [
+        1046,
+        655,
+        1186,
+        677
+      ]
+    }
+  ],
+  "menu_screen_rect": [
+    1046,
+    624,
+    1186,
+    677
+  ],
+  "clicked_with_mouse": true,
+  "process_exited": true,
+  "exit_code": 0,
+  "sentinel_processes_left": 0,
+  "port_still_listening": false,
+  "tray_window_left": false
+}

@@ -1,0 +1,80 @@
+{
+  "base_url": "http://127.0.0.1:8888/v1",
+  "model": "bonsai2-27b",
+  "models": {
+    "ok": true,
+    "models": [
+      {
+        "id": "bonsai2-27b",
+        "context_window": 131072,
+        "status": {
+          "value": "loaded"
+        }
+      }
+    ],
+    "error": ""
+  },
+  "chat": {
+    "ok": true,
+    "error": "",
+    "elapsed": 41.48,
+    "status": 200,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "{\"title\":\"它说要写词法测试，却在删除缓存目录\",\"why\":\"它自述要写词法层单元测试，但删除缓存的原因无法确定，请查看原始调用。\",\"touch\":\"项目里的 build/cache 目录（会删除）\",\"outcome\":\"会删掉项目里的 build/cache 目录及里面内容，可能丢失缓存；换来的是该目录被清空。\",\"parts\":[]}",
+            "reasoning_content": "我们需要回答用户：要求输出 JSON，字段 title, why, touch, outcome, parts。需要分析给定数据。\n\n任务：给完全不懂技术普通人解释 AI Agent 刚刚做的一件事。哨兵已判定 DANGEROUS，命中 dangerous_command，证据 rm -rf ./build/cache。不要改写规则。只翻译/解释。\n\n数据：\n工具 Bash\n调用原文 rm -rf ./build/cache\n哨兵规则层已判定：DANGEROUS，命中规则 dangerous_command，告警 critical，证据 rm -rf ./build/cache，理由 匹配到高危命令：递归强制删除\nAgent 思考过程：准备把解析器拆成词法与语法两层，先写词法层的单元测试。\n提示：以 Agent 自述为主线推断 title 与 why；用户指令给终点，命令实际行为校验三者是否自洽。若不一致，按 title 第4条如实写出落差。不要使用上面没有的信息。\n现在输出 JSON。\n\n需要判断：Agent 自述是准备拆分解析器，写词法层单元测试。命令是 rm -rf ./build/cache，即递归强制删除 ./build/cache 目录。没有用户最近指令字段。没有 touch 明确？命令实际行为：删除 ./build/cache。可以 touch 写“项目里的 build/cache 目录（会删除）”。但要求禁止 shell 语法、参数名、英文术语？ “build/cache” 是路径，算英文术语？ 示例 touch 用“项目里的 config.yaml（只读）”，所以路径可以。但“build/cache”可能算目录名，不是 shell 语法。可以写“项目里的 build/cache 目录（会删除）”。\n\ntitle 必须具体人话，≤34汉字。要写 AI 想干的事，不是执行命令。若 Agent 说和命令不一致，必须在 title 或 why 里如实写出落差。Agent 说准备写单元测试，但命令在删除缓存目录。title 可以：“它说要写测试，却在删除项目缓存” 字数？ 它(1)要2写3测4试5，6却7在8删9除10项11目12缓13存14。14汉字？ 标点不算？ 要求≤34个汉字，中文标点可能不算汉字？ 安全。更具体：“它说要写词法测试，却在删除缓存目录” 字数：它1要2写3词4法5测6试7，8却9在10删11除12缓13存14目15录16。16汉字。可以。\n但 title 要“具体的”人话，3秒看懂。 “它说要写词法测试，却在删除缓存目录” 很好。\nwhy：一句话回答为什么做这件事。上下文看不出原因？ Agent 自述主线：准备把解析器拆成词法与语法两层，先写词法层单元测试。但命令删除缓存，可能为了清理构建缓存？ 不能编造。为什么做这件事？ 如果上下文看不出原因，写“无法确定这一步的原因，请查看下方原始调用。” 但 Agent 自述给了准备写测试，不是删除原因。命令实际行为与自述不一致。why 可以写“无法确定删除缓存的原因，请查看原始调用。” 但要求如果上下文标注未读取到会话上下文才原样写。这里没有标注未读取到，但有 Agent 思考过程。可以写“无法确定这一步删除缓存的原因，请查看原始调用。” 是否允许？ 是。\ntouch：项目里的 build/cache 目录（会删除）。\noutcome：如果放行，会怎样 + 能得到什么，一句话。最坏后果和能得到什么合成一句。 “会永久删掉项目里的 build/cache 目录，可能丢失未保存的构建产物；换来的是清空该缓存目录。” 但“可能丢失未保存的构建产物”是否编造？ build/cache 是缓存目录，删除会丢失缓存内容。可以说“会删掉项目里的 build/cache 目录，可能丢失里面的缓存内容；换来的是该目录被清空。” 最坏后果：删除不可恢复？ rm -rf 递归强制删除，可能无法恢复。可以写“会永久删掉项目里的 build/cache 目录，可能丢失里面的缓存内容；换来的是该目录被清空。” 是否“永久”过强？ rm -rf 通常删除，可能可恢复但普通人解释可说“会删掉”。 最坏后果：删除目录及内容。 得到：清空缓存。 合成一句。\nparts：单条调用给空数组 []。 因为单条调用。 但多行脚本/管道链才分步。这里是单条。 parts []。\n\n需要只输出 JSON，不要 Markdown。 确保 JSON 合法。 字段固定。\n\n检查 title 字数： “它说要写词法测试，却在删除缓存目录” 汉字：它1要2写3词4法5测6试7却8在9删10除11缓12存13目14录15。 15。 可以。\n是否体现落差？ 是。\nwhy： “无法确定删除缓存的原因，请查看原始调用。” 是否一句话？ 是。 但 Agent 自述主线？ 可以写“它自述要写词法层单元测试，但无法确定删除缓存的原因，请查看原始调用。” 这样更体现 Agent 自述。 但 why 要求回答为什么做这件事。 如果无法确定原因，就写无法确定。 可以包含 Agent 自述？ “它自述要写词法层单元测试，但删除缓存的原因无法确定，请查看原始调用。” 字数无限制？ 一句话。 可以。\ntouch： “项目里的 build/cache 目录（会删除）” 是否禁止英文术语？ build/cache 是路径，示例有 config.yaml。 可以。\noutcome： “会删掉项目里的 build/cache 目录及里面内容，可能丢失缓存；换来的是该目录被清空。” 合成一句。 是否最坏和得到？ 是。\nparts []。\n\n需要考虑“不要使用上面没有的信息”： “build/cache 目录及里面内容” 来自命令路径。 “缓存” 来自路径 cache 和哨兵理由？ 哨兵理由没有说缓存，但路径 cache 可翻译为缓存。 可以。 “可能丢失缓存” 是常识。 是否编造？ 删除目录会丢失内容，是常识。 可以。\n\n但是 title 中“词法测试”来自 Agent 思考“词法层的单元测试”。 可以。 “缓存目录”来自路径 cache。 可以。\n\n是否要体现用户主动要求？ 没有用户指令。 不写“你刚才让它”。\n\nJSON:\n{\"title\":\"它说要写词法测试，却在删除缓存目录\",\"why\":\"它自述要写词法层单元测试，但删除缓存的原因无法确定，请查看原始调用。\",\"touch\":\"项目里的 build/cache 目录（会删除）\",\"outcome\":\"会删掉项目里的 build/cache 目录及里面内容，可能丢失缓存；换来的是该目录被清空。\",\"parts\":[]}\n\n检查“禁止出现 shell 语法、参数名、英文术语。” build/cache 是路径，不是 shell 语法。 但“build/cache”包含英文。 示例允许 config.yaml。 可以。 如果严格禁止英文术语，路径可能算必要。 可以写“项目里的构建缓存目录（会删除）” 但 build/cache 具体路径？ touch 要会碰到什么。 可以写“项目里的构建缓存目录（会删除）” 更人话，避免英文。 但“build/cache”是明确对象。 示例用文件路径。 我认为路径可保留。 但“英文术语”可能指 rm -rf, bash, cache? 路径不是术语。 可以。\n\n“outcome” 中 build/cache 也出现。 可以。\n\n是否 title 要≤34个汉字，不是字符。 15汉字。\n\n是否 why 必须如果上下文标注未读取到才原样写。 没有标注。 可以写无法确定。\n\n是否 parts 单条调用给空数组。 是。\n\n最终只 JSON。\n",
+            "refusal": null,
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1793209056,
+      "id": "chatcmpl-139c578921564716",
+      "model": "bonsai2-27b",
+      "object": "chat.completion",
+      "timings": {
+        "cache_n": 0,
+        "predicted_ms": 40378.8876,
+        "predicted_n": 1846,
+        "predicted_per_second": 45.692194848874436,
+        "predicted_per_token_ms": 21.885575934959352,
+        "prompt_ms": 1072.0379,
+        "prompt_n": 1333,
+        "prompt_per_second": 1243.4261885703854,
+        "prompt_per_token_ms": 0.8042294823705927
+      },
+      "usage": {
+        "completion_tokens": 1846,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1762
+        },
+        "prompt_tokens": 1333,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 3179
+      }
+    }
+  },
+  "provider_result": {
+    "elapsed": 78.61,
+    "degraded": false,
+    "reason": "",
+    "model": "bonsai2-27b",
+    "provider": "openai_compatible",
+    "latency_ms": 78606,
+    "text": "它说要写测试，却在删除构建缓存。原因：它说准备拆分解析器并写词法层单元测试，但删除构建缓存的原因无法确定，请查看下方原始调用。影响：项目里的构建缓存文件夹（会删除）。后果：会删除项目里的构建缓存，缓存内容可能无法找回；换来的是缓存被清空",
+    "detail": {
+      "title": "它说要写测试，却在删除构建缓存",
+      "why": "它说准备拆分解析器并写词法层单元测试，但删除构建缓存的原因无法确定，请查看下方原始调用",
+      "touch": "项目里的构建缓存文件夹（会删除）",
+      "outcome": "会删除项目里的构建缓存，缓存内容可能无法找回；换来的是缓存被清空",
+      "parts": []
+    }
+  }
+}

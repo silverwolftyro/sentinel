@@ -1,0 +1,139 @@
+# 哨兵 Sentinel —— ruff 静态检查配置
+#
+# 为什么自己配一套，而不是直接 `ruff check --select ALL`
+# ==========================================================
+#
+# ruff 的「全选」里有两大类东西混在一起：
+#
+# 1. **真缺陷** —— 未使用的导入、未定义的名字、吞掉的异常、
+#    忘了关的文件句柄。这一类**必须清零**。
+# 2. **风格偏好** —— 把 ``typing.List`` 改成 ``list``、
+#    把 ``.format()`` 改成 f-string。这一类一改就是上千行，
+#    diff 全是噪音，真正的缺陷反而被淹掉。
+#
+# 本项目**一贯**用 ``typing.List`` / ``typing.Optional``
+# （见 ``CONTRIBUTING.md`` §2.4），全部文件都这么写 ——
+# 为了统一风格去改一千多行不叫「打磨」，叫「制造噪声」。
+#
+# 所以这里只开**与本项目规范直接相关**的规则：
+#
+#   · CONTRIBUTING §2.3 导入顺序（标准库 → 第三方 → 本项目） → I
+#   · CONTRIBUTING §2.4 类型注解、docstring                     → F / D
+#   · CONTRIBUTING §2.5 库代码禁 print                          → T20
+#   · CONTRIBUTING §2.6 异常必须可定位、不许裸 except            → BLE / S110 / TRY
+#   · CONTRIBUTING §2.2 79 字符                                 → E501
+#   · 红线 R5「审查侧异常一律降级」                            → S110 / SIM105
+#
+# 跑法：``python -m ruff check .``（必须零告警）。
+
+# 79 字符 —— 与 CONTRIBUTING §2.2 一致。
+line-length = 79
+target-version = "py310"
+
+[lint]
+select = [
+    "F",     # pyflakes：未使用的导入 / 未定义的名字 / 死变量
+    "E",     # pycodestyle 错误
+    "W",     # pycodestyle 警告
+    "I",     # isort：导入顺序
+    "B",     # bugbear：常见坑
+    "C4",    # comprehensions
+    "SIM",   # 简化建议
+    "RET",   # 返回值简化
+    "PL",    # pylint 子集
+    "RUF",   # ruff 自带的一组细规则
+    "S",     # bandit：安全
+    "BLE",   # 盲except
+    "TRY",   # 异常处理写法
+    "PERF",  # 性能
+    "PIE",   # 杂项
+    "ARG",   # 未使用的函数参数
+    "T20",   # print（库代码里禁 print）
+]
+
+ignore = [
+    # --- 风格偏好：与本项目一贯的写法冲突 ---
+    "UP006",   # typing.List → list（本项目统一用 typing.*）
+    "UP007",   # typing.Union → |（同上）
+    "UP035",   # typing 里的过时导入
+    "UP045",   # Optional[X] → X | None（同上）
+    "UP032",   # .format() → f-string（.format 在中文串拼接里更安全）
+    "UP031",   # 百分号格式化
+    "COM812",  # 尾逗号（项目不强制）
+    "ISC001",  # 行内冲突提示（.format 的多行写法更常见）
+    "Q000",    # 引号风格（项目用双引号，但 ruff 默认也认）
+    "E501",    # 行长 —— 交给人工审查，不阻断（中文注释尤其难算）
+    # --- 误报：项目的写法是有意的 ---
+    "SIM105",  # contextlib.suppress（项目更爱显式 try/except + 日志）
+    "TRY003",  # 长异常消息（项目要求异常信息带上下文，恰恰相反）
+    "TRY400",  # 改用 logging.exception（项目按可恢复性选 warning/error）
+    "TRY301",  # 抽象 raise（项目偏好直接写清楚）
+    "PLR0911", # 返回分支太多（审查流程天然分支多）
+    "PLR0912", # 分支太多（同上）
+    "PLR0913", # 参数太多（FastAPI 的依赖注入天然参数多）
+    "PLR0915", # 语句太多
+    "PLR2004", # magic value
+    "PLR0915", # 语句太多
+    "S101",    # assert（测试里大量使用）
+    "S603",    # subprocess（项目必须能起真实进程）
+    "S607",    # 启动路径（要兼容不同平台）
+    "B008",    # 函数调用默认值（本项目的回调注入大量使用）
+    "ARG001",  # 未使用参数（回调签名要对齐）
+    "ARG002",
+    "ARG005",
+    "RET504",  # 赋值后立刻返回（可读性更好）
+    "PERF203", # try 块里的循环（审查路径刻意如此）
+    "T201",    # print —— src/console.py 是**终端呈现层**，print 是它的职责
+    # --- 与本项目语言 / 架构直接冲突的 ---
+    "RUF001",  # 歧义 unicode（字符串）—— 中文标点本来就长得像 ASCII
+    "RUF002",  # 歧义 unicode（docstring）—— 同上
+    "RUF003",  # 歧义 unicode（注释）—— 同上
+    "PLC0415", # 顶层之外的 import —— **惰性导入是本项目的架构决定**
+    #            （GUI 应用层不许 import src.core.*，见 ARCHITECTURE.md）
+    "PLC2401", # 非 ASCII 名字 —— 本项目是中文项目
+    "RUF100",  # 没用的 noqa —— noqa 是**意图声明**，
+    #            规则集以后会变，留着比删掉安全
+    "S310",    # urlopen —— 验证脚本要访问本机看板
+    "PLR0917", # 位置参数太多 —— FastAPI 的依赖注入天然如此
+    "PLW0603", # global 语句 —— 少数全局单例是刻意的
+    "TRY300",  # try/except/else 的风格偏好
+    "TRY401",  # logging.exception 里重复带异常对象 ——
+    #            本项目要求异常消息**带类型、带上下文**（CONTRIBUTING §2.6），
+    #            写进 message 才好按关键字检索日志，traceback 是额外的。
+    "PLW1510", # subprocess 不检查返回值 —— 项目自己检查得更细
+    "B007",    # 循环变量没用 —— 少数地方是为了可读性
+    "B028",    # 显式没有告警的 stacklevel
+    "RUF005",  # 列表拼接 → 解包 —— 「替换其中一行」这种场景，
+    #            ``lines[:i] + [x] + lines[i + 1:]`` 比解包写法更直观
+    "RUF015",  # ``xs[0]`` → ``next(iter(xs))`` —— 单元素切片更直观
+]
+
+[lint.per-file-ignores]
+# 终端呈现层 —— 它的职责就是往终端打印。
+"src/console.py" = ["T201"]
+# 演示脚本 / 验收脚本 —— 它们就是要给人看输出的。
+"_构建与发布/scripts/*.py" = ["T201", "S101", "SIM115"]
+# 测试 —— 断言、临时文件、故意写坏的东西都是测试的一部分。
+"tests/*.py" = [
+    "S101",    # assert
+    "SIM115",  # 故意不关的临时句柄
+    "S108",    # 临时目录
+    "ARG001",  # 假对象的参数要对齐真实签名
+    "ARG002",
+    "ARG004",
+    "S104",    # 测试里的假地址（0.0.0.0）就是测试数据
+    "S105",    # 测试里的假密钥名/假密钥值就是测试数据
+    "S106",
+]
+
+[lint.isort]
+# 本项目的「本项目」导入一律是 `from src.xxx import ...`
+# （见 CONTRIBUTING §2.3），必须排在第三方之后。
+known-first-party = ["src"]
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[format]
+quote-style = "double"
+indent-style = "space"

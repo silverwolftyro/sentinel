@@ -1,0 +1,53 @@
+{
+  "failover": {
+    "status": "failover",
+    "failover": true,
+    "bridged": true,
+    "red_light": false,
+    "notice": "[WARN] L2 掉线，已自动切换至 L3 深度审查",
+    "reason": "L2 掉线，L3 单盲复核判定有问题：Mock 云端复核",
+    "l3_calls": 1,
+    "payload_kept": true,
+    "l2_reason_forwarded": true
+  },
+  "budget": {
+    "rows": [
+      {
+        "第几次": 1,
+        "status": "failover",
+        "budget_exhausted": false,
+        "notice": "[WARN] L2 掉线，已自动切换至 L3 深度审查"
+      },
+      {
+        "第几次": 2,
+        "status": "failover",
+        "budget_exhausted": false,
+        "notice": "[WARN] L2 掉线，已自动切换至 L3 深度审查"
+      },
+      {
+        "第几次": 3,
+        "status": "unavailable",
+        "budget_exhausted": true,
+        "notice": "[WARN] L3 回退预算已耗尽，已放弃云端调用并回退 L1 纯规则"
+      }
+    ],
+    "l3_calls": 2,
+    "failover": 2,
+    "budget_exhausted": 1,
+    "budget": {
+      "limit": 2,
+      "window_seconds": 3600.0,
+      "cost_limit": 0.0,
+      "unit_cost": 0.0,
+      "used": 2,
+      "used_cost": 0.0
+    }
+  },
+  "both_down": {
+    "status": "unavailable",
+    "red_light": false,
+    "budget_exhausted": false,
+    "notice": "[WARN] L2 掉线，已自动切换至 L3 深度审查",
+    "reason": "L2 与 L3 均不可用，已回退 L1 纯规则：ConnectionError（ConnectionError（云端也连不上））"
+  }
+}

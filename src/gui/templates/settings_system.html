@@ -1,0 +1,113 @@
+{# v3.2.0 —— 设置子页面：关于系统（哨兵自身的运行时长 / 内存占用 / 版本号） #}
+{% extends "settings_base.html" %}
+
+{% block title %}哨兵 Sentinel · 设置 · 关于系统{% endblock %}
+{% block subtitle %}关于系统 · 哨兵自己的运行状况{% endblock %}
+
+{% block content %}
+  <section class="panel settings-page" id="section-system">
+    <div class="panel__head">
+      <h2 class="panel__title">⑤ 关于系统</h2>
+      <span class="panel__hint" id="system-status" role="status"></span>
+    </div>
+    <div class="panel__body settings-section__body">
+
+      <p class="settings-note">
+        「监控工具本身不能变成资源消耗大户」——
+        所以这里把哨兵<strong>自己</strong>的运行状况摊开给你看：
+        它跑了多久、吃了多少内存、现在是什么版本。
+        <span class="mono">CPU</span> 那一项需要两次采样才有意义，
+        页面每 5 秒自动刷新一次。
+      </p>
+
+      <div class="settings-grid" id="system-grid">
+        <div class="settings-field">
+          <span class="settings-label">版本号</span>
+          <span class="settings-static mono" id="system-version">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">运行时长（进程）</span>
+          <span class="settings-static mono" id="system-uptime">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">运行时长（看板服务）</span>
+          <span class="settings-static mono" id="system-server-uptime">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">内存占用（当前）</span>
+          <span class="settings-static mono" id="system-memory">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">内存占用（峰值）</span>
+          <span class="settings-static mono" id="system-memory-peak">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">CPU 占用</span>
+          <span class="settings-static mono" id="system-cpu">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">进程号 PID</span>
+          <span class="settings-static mono" id="system-pid">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">Python 线程数</span>
+          <span class="settings-static mono" id="system-threads">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">监控中的会话</span>
+          <span class="settings-static mono" id="system-sessions">–</span>
+        </div>
+        <div class="settings-field">
+          <span class="settings-label">监听地址</span>
+          <span class="settings-static mono" id="system-bind">–</span>
+        </div>
+      </div>
+
+      <div class="settings-callout">
+        <h3 class="settings-callout__title">这些数字是怎么量出来的？</h3>
+        <p class="settings-note">
+          <strong>内存</strong> —— Windows 的
+          <span class="mono">GetProcessMemoryInfo</span>
+          报的工作集（进程真正占着的物理内存）与峰值；
+        </p>
+        <p class="settings-note">
+          <strong>CPU</strong> —— 进程累计的内核时间 + 用户时间，
+          除以两次采样之间的墙钟时间。
+          ⚠️ 多核机器上这个值<strong>可以超过 100%</strong>
+          （16 核跑满就是 1600%）—— 那不是 bug，是「用掉了 16 个核」；
+        </p>
+        <p class="settings-note">
+          <strong>运行时长</strong> —— 进程创建时刻到现在。
+        </p>
+        <p class="settings-note">
+          ⚠️ 全部走 Windows 自带的 API，
+          <strong>不额外装任何依赖</strong>；
+          采样本身<strong>不读文件、不起线程、不做网络请求</strong>，
+          而且默认 <strong>5 分钟才采一次</strong> ——
+          监控器自己不能变成负载。
+        </p>
+      </div>
+
+      <div class="settings-callout">
+        <h3 class="settings-callout__title">被跟读的日志会不会撑爆内存？</h3>
+        <p class="settings-note">
+          不会。跟读器（<span class="mono">FileTailer</span>）只保留
+          <strong>末尾那半行</strong>（还没等到换行的部分），
+          而且 v3.2.0 给它加了 <strong>1 MiB 的硬上限</strong>：
+          遇到「一整行几 MB、迟迟不换行」的日志，
+          缓冲区会丢掉最老的残片，而不是一直涨。
+        </p>
+        <p class="settings-note">
+          单次读取也有 <strong>4 MiB</strong> 的上限，
+          文件轮转与原地截断都能识别并重置偏移 ——
+          挂一整夜不会「越读越多」。
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/settings_common.js" defer></script>
+<script src="/static/settings_system.js" defer></script>
+{% endblock %}

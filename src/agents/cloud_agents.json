@@ -1,0 +1,486 @@
+{
+  "schema": 1,
+  "generated_for": "哨兵 v4.3.0 —— 吸收上游 n.e.k.o_plugin_agent_bridge 的 Agent 扩展清单（v4.1.0 建档，v4.3.0 补 log_dirs）",
+  "source": {
+    "project": "n.e.k.o_plugin_agent_bridge",
+    "registry": "bridge/registry.py :: AGENT_SPECS（内置 9 条）",
+    "manifests": "providers/*/provider.toml（数据化 5 条）",
+    "aliases": "bridge/registry.py :: ALIASES（全局 8 条）",
+    "extracted_at": "2026-11-01",
+    "caveat": "label 使用哨兵本地的中文译名，source_label 保留上游原文。notes / hints 是上游作者在其自有机器上的观察，本机未复验 —— 迁移后必须逐条重测。"
+  },
+  "agents": [
+    {
+      "id": "atomcode",
+      "label": "AtomCode",
+      "source_label": "AtomCode",
+      "binary": "atomcode",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": null,
+      "json_args": [
+        "--output-format",
+        "jsonl"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "atom"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "登录走 AtomGit OAuth；支持 --prompt-file 与 --ephemeral。",
+      "hints": [],
+      "json_shape": "jsonl",
+      "json_shape_note": "每行一个 JSON 对象",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "claude",
+      "label": "Claude Code（Anthropic）",
+      "source_label": "Claude Code（Anthropic）",
+      "binary": "claude",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [
+        "--output-format",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "部分沙箱环境下启动时调用 reg.exe 会命中程序黑名单。",
+      "hints": [],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [
+        "~/.claude/projects"
+      ],
+      "log_dirs_note": "已登记的已知会话日志目录。"
+    },
+    {
+      "id": "codebuddy",
+      "label": "CodeBuddy Code（腾讯）",
+      "source_label": "CodeBuddy Code（腾讯）",
+      "binary": "codebuddy",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [
+        "--output-format",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "cbc",
+        "codebuddy-code"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "凭据挂在 WorkBuddy 桌面端；未登录时返回退出码 1 且无输出。",
+      "hints": [],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [
+        "~/.codebuddy/projects",
+        "~/.codebuddy/sessions"
+      ],
+      "log_dirs_note": "已登记的已知会话日志目录。"
+    },
+    {
+      "id": "command-code",
+      "label": "Command Code",
+      "source_label": "Command Code",
+      "binary": "command-code",
+      "mode": "switch",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [
+        "--output-format",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "cmdc",
+        "commandcode"
+      ],
+      "auth_patterns": [
+        "authentication failed",
+        "please run .{0,12}login.{0,4} first"
+      ],
+      "fail_patterns": [],
+      "login_hint": "需要先登录：cmdc login（等价于 command-code login）",
+      "install_cmd": "bun add -g command-code",
+      "install_hint": "",
+      "notes": "官方横幅自称 cmd，但 cmd 在 Windows 上是 cmd.exe，故不登记为别名。",
+      "hints": [
+        "未登录时退出码 3，stderr 是 Error: Authentication failed. Please run \"cmdc login\" first. —— 必须靠 auth_patterns 认出来，否则只会被报成普通 FAILED。",
+        "-p 的取值是可选的（[query]），所以登记为 mode=switch：先 -p 再把正文当位置参数。",
+        "--max-turns 默认 100，命中上限会以 exit=8 结束，不是普通失败；长任务请显式放宽或拆小。",
+        "--yolo / --permission-mode 会绕过权限确认，桥接默认不加。"
+      ],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "dsh",
+      "label": "DeepSeek Harness（深度求索）",
+      "source_label": "DeepSeek Harness",
+      "binary": "dsh",
+      "mode": "positional",
+      "fixed_args": [
+        "--profile",
+        "headless"
+      ],
+      "prompt_flag": null,
+      "model_flag": null,
+      "json_args": [],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "任务描述作为位置参数放在 --profile 之后。",
+      "hints": [],
+      "json_shape": "none",
+      "json_shape_note": "没有机器可读输出，只有纯文本",
+      "log_dirs": [
+        "~/.dsh/sessions"
+      ],
+      "log_dirs_note": "已登记的已知会话日志目录。"
+    },
+    {
+      "id": "evox",
+      "label": "EvoX",
+      "source_label": "EvoX",
+      "binary": "evox",
+      "mode": "flag",
+      "fixed_args": [
+        "--evox-cli"
+      ],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "evox.exe 需要 --evox-cli 才进入 CLI 模式；PATH 上是 evox.cmd 包装器。",
+      "hints": [],
+      "json_shape": "none",
+      "json_shape_note": "没有机器可读输出，只有纯文本",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini CLI（谷歌）",
+      "source_label": "Gemini CLI（Google）",
+      "binary": "gemini",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "-m",
+      "json_args": [
+        "-o",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "gcli",
+        "geminicli"
+      ],
+      "auth_patterns": [
+        "please set an auth method",
+        "specify one of the following environment variables"
+      ],
+      "fail_patterns": [],
+      "login_hint": "gemini 需要先配鉴权：设 GEMINI_API_KEY 环境变量，或在 ~/.gemini/settings.json 里选一种 Auth 方式",
+      "install_cmd": "bun add -g @google/gemini-cli",
+      "install_hint": "",
+      "notes": "官方 Gemini CLI（@google/gemini-cli）。headless 模式用 -p/--prompt。",
+      "hints": [
+        "未配置鉴权时退出码 41（不是 1），只在 stderr 打一句「Please set an Auth method…」。不靠 auth_patterns 认出来，就会被报成普通 FAILED：不进 needs_login、不跳过、也不提示换一个 Agent。",
+        "-o json 会把 stdout 变成 JSON 对象（正文在 response 字段），要看正文就别开 json_args；agent_run 默认不开。",
+        "--yolo / --approval-mode yolo 会自动接受所有动作，桥接默认不加，需要时用配置的 extra_args 显式打开。"
+      ],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "hermes",
+      "label": "Hermes（Nous Research）",
+      "source_label": "Hermes（Nous Research）",
+      "binary": "hermes",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-z",
+      "model_flag": "-m",
+      "json_args": [],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "hermes-agent"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [
+        "gateway inaccessible",
+        "service_manager_unavailable"
+      ],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "Hermes 走 git 安装：见 ~/AppData/Local/hermes；无包管理器命令",
+      "notes": "本机装在 ~/AppData/Local/hermes/，git 方式安装；只有 bin 目录，不要指望在 PATH 里。",
+      "hints": [
+        "-z 是一次性执行开关；chat 子命令是交互式，别用。",
+        "需要本地 gateway 服务在跑。没跑时退出码 0，只打一行 Error: Gateway inaccessible: service_manager_unavailable —— 光看退出码会当成成功。",
+        "沙箱/受限环境下启用 gateway 需要 schtasks.exe，可能被程序黑名单拦住。",
+        "--skills <列表> 可以指定加载哪些 skill；--yolo 会跳过全部确认，桥接默认不加。"
+      ],
+      "json_shape": "none",
+      "json_shape_note": "没有机器可读输出，只有纯文本",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "omp",
+      "label": "Oh My Pi",
+      "source_label": "Oh My Pi",
+      "binary": "omp",
+      "mode": "flag",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [
+        "--mode",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "oh-my-pi",
+        "ompi"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "同 monorepo 另有 mnemopi（记忆）与 omp-stats（用量）。",
+      "hints": [],
+      "json_shape": "stream",
+      "json_shape_note": "事件流（每行一个事件，不是完整文档）",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "openclaw",
+      "label": "OpenClaw",
+      "source_label": "OpenClaw",
+      "binary": "openclaw",
+      "mode": "positional",
+      "fixed_args": [
+        "agent",
+        "exec"
+      ],
+      "prompt_flag": null,
+      "model_flag": "--model",
+      "json_args": [
+        "--json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "claw"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "agent exec 为一次性隔离执行，不需要常驻 Gateway。",
+      "hints": [],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "source_label": "OpenCode",
+      "binary": "opencode",
+      "mode": "positional",
+      "fixed_args": [
+        "run"
+      ],
+      "prompt_flag": null,
+      "model_flag": "--model",
+      "json_args": [
+        "--format",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "oc"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "非交互式走独立的 run 子命令。",
+      "hints": [],
+      "json_shape": "document",
+      "json_shape_note": "stdout 整体是一个 JSON 文档",
+      "log_dirs": [
+        "~/.local/share/opencode/log"
+      ],
+      "log_dirs_note": "已登记的已知会话日志目录。"
+    },
+    {
+      "id": "pi",
+      "label": "pi（AI 编码助手）",
+      "source_label": "pi（AI coding assistant）",
+      "binary": "pi",
+      "mode": "switch",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [
+        "--mode",
+        "json"
+      ],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "pi-coding-agent",
+        "earendil-pi"
+      ],
+      "auth_patterns": [
+        "pi auth"
+      ],
+      "fail_patterns": [],
+      "login_hint": "pi 需要先配置凭据：pi auth 查看 provider 就绪状态，或用 --api-key / 环境变量提供",
+      "install_cmd": "bun add -g @earendil-works/pi-coding-agent",
+      "install_hint": "",
+      "notes": "只装 tools（read/bash/edit/write）的极简编码助手；扩展、技能、MCP 都要显式开启。",
+      "hints": [
+        "-p 不吃值（它是 boolean），正文必须走位置参数 —— 登记成 mode=flag 会拼出怪形态，用 switch 才对。",
+        "扩展/技能默认会做发现扫描；批量派发时用 --no-extensions / --no-skills 可以显著降低启动抖动（走配置的 extra_args）。",
+        "--mode json 输出的是事件流，取正文需要额外解析；默认别开。",
+        "本机沙箱里 pi -p 曾被程序黑名单拦在 reg.exe 上（与 claude 同因），表现为「无输出 + 非 0 退出」。宿主环境若无此限制则正常。"
+      ],
+      "json_shape": "stream",
+      "json_shape_note": "事件流（每行一个事件，不是完整文档）",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "qwenpaw",
+      "label": "QwenPaw（通义千问）",
+      "source_label": "QwenPaw",
+      "binary": "qwenpaw",
+      "mode": "flag",
+      "fixed_args": [
+        "task"
+      ],
+      "prompt_flag": "-i",
+      "model_flag": "-m",
+      "json_args": [],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "qwen"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "",
+      "notes": "内置跨 Agent 协作工具（submit_to_agent 等）；PATH 上是 .cmd 包装器。",
+      "hints": [],
+      "json_shape": "none",
+      "json_shape_note": "没有机器可读输出，只有纯文本",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    },
+    {
+      "id": "step",
+      "label": "StepCode CLI（阶跃星辰）",
+      "source_label": "StepCode CLI（阶跃）",
+      "binary": "step",
+      "mode": "switch",
+      "fixed_args": [],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "json_args": [],
+      "version_args": [
+        "--version"
+      ],
+      "aliases": [
+        "stepcode"
+      ],
+      "auth_patterns": [],
+      "fail_patterns": [],
+      "login_hint": "",
+      "install_cmd": "",
+      "install_hint": "StepCode 通过其发行包安装，本机已在 ~/.stepcode；无包管理器命令可复用",
+      "notes": "本机在 ~/.stepcode/bin/step.exe（未进 PATH，靠兜底目录找到）。",
+      "hints": [
+        "响应很慢：未登录时 -p 会静默挂起 40s 以上、stdout/stderr 全空 —— 面板会把它标成「慢/待验证」，不要以为它死了。",
+        "先跑一次 step auth 完成登录，再派发；未登录时连错误信息都没有，只能靠超时判定。",
+        "--sdk-stdio 是 SDK 宿主模式，不是任务入口，别用。"
+      ],
+      "json_shape": "none",
+      "json_shape_note": "没有机器可读输出，只有纯文本",
+      "log_dirs": [],
+      "log_dirs_note": "会话日志目录未确认 —— 留空表示「还没查清楚」，不是「没有日志」。"
+    }
+  ]
+}

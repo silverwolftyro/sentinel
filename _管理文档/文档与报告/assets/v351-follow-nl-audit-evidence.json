@@ -1,0 +1,67 @@
+{
+  "version": "v3.5.1",
+  "port": 8151,
+  "demo_log": "mcode.jsonl",
+  "audit_stream": {
+    "ok_lines": 9,
+    "warn_lines": 1,
+    "danger_lines": 1,
+    "sentences": [
+      "[17:39:32]Agent 正在思考：我先确认一下这个模块的边界条件，再决定要不要改它的签名；如果只改内部实现，对外…",
+      "[17:39:32]正常读取：core/engine.py",
+      "[17:39:32]正常执行命令：python -m pytest -q tests/",
+      "[17:39:32]正常读取：core/auth.py",
+      "[17:39:32]正常读取：core/auth.py",
+      "[17:39:32]警告：连续 3 次读取同一个文件，疑似死循环: src/core/auth.py",
+      "[17:39:32]危险！拦截到高危命令：rm -rf /",
+      "[17:39:32]Agent 正在思考：回归跑完了，失败的那两条都指向同一个文件；先把失败用例单独拎出来复现，确认不是…",
+      "[17:39:32]正常搜索：ON_TRACK",
+      "[17:39:32]正常读取：rules/basic.py",
+      "[17:39:32]正常执行命令：ruff check ."
+    ],
+    "screenshot": "v351-nl-audit.png"
+  },
+  "log_follow": {
+    "scroll_before_new_lines": {
+      "top": 0,
+      "height": 3345,
+      "client": 669,
+      "gap": 2676
+    },
+    "scroll_after_new_lines": {
+      "top": 0,
+      "height": 3907,
+      "client": 669,
+      "gap": 3238
+    },
+    "button_while_detached": {
+      "hidden": false,
+      "visible": true,
+      "text": "↓ 回到最新"
+    },
+    "stayed_while_detached": true,
+    "scroll_after_click": {
+      "top": 3238,
+      "height": 3907,
+      "client": 669,
+      "gap": 0
+    },
+    "button_after_click": {
+      "hidden": true,
+      "visible": false
+    },
+    "returned_to_bottom": true,
+    "screenshot": "v351-log-follow.png"
+  },
+  "radar_empty": {
+    "guide_found": true,
+    "title": "未发现正在运行的 Agent。若要开始监控，请在终端中运行：",
+    "title_matches": true,
+    "command": "mcode exec \"你的指令\" > D:\\项目\\<项目目录>\\logs\\capture.jsonl",
+    "copy_button_text_after_click": "已复制 ✓",
+    "copy_succeeded": true,
+    "clipboard_content": "mcode exec \"你的指令\" > D:\\项目\\<项目目录>\\logs\\capture.jsonl",
+    "clipboard_matches_command": true,
+    "screenshot": "v351-radar-empty.png"
+  }
+}

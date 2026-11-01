@@ -1,0 +1,149 @@
+{
+  "version": "v3.0.2",
+  "date": "2026-10-28",
+  "regression": {
+    "total": 1216,
+    "failed": 0,
+    "command": "python -m pytest -p no:warnings",
+    "ruff": "零告警",
+    "doc_links": "171 条相对链接，0 坏链"
+  },
+  "redlines": {
+    "changed": false,
+    "note": "R1–R9 与 v2.1.0 完全一致，一字未改"
+  },
+  "mpa_settings": {
+    "routes": {
+      "/settings": 200,
+      "/settings/llm": 200,
+      "/settings/webhook": 200,
+      "/settings/rules": 200,
+      "/settings/sessions": 200
+    },
+    "click_nav": {
+      "selector": "a[href='/settings/llm']",
+      "path_after": "/settings/llm",
+      "title_after": "哨兵 Sentinel · 设置 · 模型路由",
+      "has_llm_form": true,
+      "has_radar_roots": false,
+      "has_channel_list": false,
+      "nav_links": 4,
+      "panels": 1
+    },
+    "old_single_page_markers_removed": {
+      "data_target": true,
+      "data_section": true
+    }
+  },
+  "start_menu": {
+    "options": [
+      "[1] 启动演示模式 (体验界面)",
+      "[2] 开启雷达 (扫描已有的 Agent 日志)",
+      "[3] 接管并启动新的 Agent"
+    ],
+    "default": "2",
+    "non_interactive_falls_back": true,
+    "pipe_input_honored": true,
+    "file_redirect_honored": true,
+    "bom_stripped": true,
+    "bat_routes_to_entry": true
+  },
+  "radar": {
+    "default_scan_roots": [
+      ".minimax/v2/sessions",
+      ".dsh/sessions",
+      ".mcode",
+      ".claude",
+      ".codex"
+    ],
+    "codex_priority": "last",
+    "per_root_budget": 40,
+    "active_only_default": 1,
+    "scan_seconds_active_only": 0.05,
+    "scan_seconds_full": 0.21,
+    "scan_seconds_before_v302": 12.13,
+    "roots": [
+      "C:\\Users\\alpha\\.minimax\\v2\\sessions",
+      "C:\\Users\\alpha\\.dsh\\sessions",
+      "C:\\Users\\alpha\\.codex"
+    ],
+    "active_samples": [
+      {
+        "agent": "mcode",
+        "path": "C:\\Users\\alpha\\.minimax\\v2\\sessions\\2026\\10\\28\\05-43-10-742-session_bXZzXzczZjJjZmEzZGJkMDQyMGY4ZGE0MjMxODU0ZmJhNDI2\\messages.jsonl",
+        "session_id": "bXZzXzczZjJjZmEzZGJkMDQyMGY4ZGE0MjMxODU0ZmJhNDI2",
+        "first_time": 1793166221.862,
+        "workspace_source": "file",
+        "compressed": false,
+        "attachable": true
+      },
+      {
+        "agent": "mcode",
+        "path": "C:\\Users\\alpha\\.minimax\\v2\\sessions\\2026\\10\\26\\14-31-44-748-session_bXZzX2JiMjI5MDg5ZDZiMDQzNWI4NjQ0ZGNlZGM4YzI1NGI2\\messages.jsonl",
+        "session_id": "bXZzX2JiMjI5MDg5ZDZiMDQzNWI4NjQ0ZGNlZGM4YzI1NGI2",
+        "first_time": 1793167544.728,
+        "workspace_source": "file",
+        "compressed": false,
+        "attachable": true
+      }
+    ],
+    "dsh_zstd_samples": [
+      {
+        "agent": "dsh",
+        "workspace": "D:\\项目",
+        "workspace_source": "cwd",
+        "session_id": "964b189b-4b1d-469d-a8a9-9830e4214235",
+        "first_time": 1792600830.272,
+        "compressed": true,
+        "attachable": false
+      },
+      {
+        "agent": "dsh",
+        "workspace": "D:\\项目\\<你的工作区>",
+        "workspace_source": "cwd",
+        "compressed": true,
+        "attachable": false
+      }
+    ],
+    "dsh_zstd_count": 16,
+    "attach_refuses_zstd": true,
+    "current_cwd_reported": true
+  },
+  "packaged_exe": {
+    "path": "_构建与发布/dist/sentinel.exe",
+    "bytes": 16786481,
+    "size": "16.0 MB",
+    "build_seconds": 22.0,
+    "self_check_first_line": "哨兵 Sentinel v3.0.2 —— AI CLI Agent 的只读审计监控",
+    "radar_run": "sentinel.exe --radar --no-browser --no-health --port 8026",
+    "discover_ok": true,
+    "discover_count": 50,
+    "cwd": "D:\\项目\\<项目目录>\\_构建与发布\\dist",
+    "dsh_zstd_readable": true,
+    "note": "压缩条目能读出 cwd，证明 compression.zstd 确实被打进了 exe"
+  },
+  "copy_command": {
+    "page": "/settings/sessions",
+    "element": "#radar-copy-command",
+    "command_text": "sentinel --agent codex --cwd \"D:\\项目\\<项目目录>\" \"你的任务指令\"",
+    "clipboard_blocked_in_automation": true,
+    "fallback": "命令被选中，按钮变为「已选中，按 Ctrl+C」",
+    "selection_verified": true
+  },
+  "shots": {
+    "settings_menu": "assets/settings-v3.0.2-menu.png",
+    "settings_llm": "assets/settings-v3.0.2-llm.png",
+    "settings_sessions": "assets/settings-v3.0.2-sessions.png",
+    "settings_copy_fallback": "assets/settings-v3.0.2-copy.png",
+    "radar_active_only": "assets/radar-v3.0.2-active-only.png",
+    "radar_dsh_zstd": "assets/radar-v3.0.2-dsh-zstd.png",
+    "console_start_menu": "assets/console-v3.0.2-start-menu.png",
+    "console_exe_start_menu": "assets/console-v3.0.2-exe-start-menu.png"
+  },
+  "not_done": [
+    "zstd 会话的实时接入（跟读器要改成按解压后长度计偏移）",
+    "DeepSeek 目录名解码（会话头里已有 cwd，暂时用不上）",
+    "mcode 会话的工作目录（messages.jsonl 里确实没有 cwd）"
+  ],
+  "errors": []
+}

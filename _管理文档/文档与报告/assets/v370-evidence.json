@@ -1,0 +1,73 @@
+{
+  "version": "v3.7.0",
+  "port": 8155,
+  "mock_l3": "http://127.0.0.1:8765/v1",
+  "demo_log": "mcode.jsonl",
+  "radar_root": "D:\\项目\\<项目目录>\\logs\\v370-demo\\radar-root",
+  "rules_page": {
+    "rule_count": "23",
+    "rule_id": "dangerous.sudo",
+    "toggle_clicked": true,
+    "before": {
+      "checked": true
+    },
+    "after": {
+      "found": true,
+      "checked": false,
+      "actionDisabled": true,
+      "rowCount": 26,
+      "ids": [
+        ":settings-table__group",
+        "catastrophic.root_delete",
+        "catastrophic.mass_delete",
+        "catastrophic.disk_wipe",
+        "catastrophic.remote_exec",
+        ":settings-table__group",
+        "dangerous.rm_rf",
+        "dangerous.sudo"
+      ],
+      "countText": "23",
+      "bodyHead": "\n            \n          <tr class=\"settings-table__group\"><td colspan=\"5\">红线级（catastrophic）· 守护者唯一触发源（4 条）</td></tr><tr data-rule-id=\"catastrophic.root_delete\"><td><span class=\"settings-table__name\">递归删除根目录 / 家目录 / 整盘</span></td><td><code class=\"settings-table__pattern\">根路径目标（/ ~/ C:\\ 等）上的递归删除</code"
+    },
+    "saved_enabled": false,
+    "saved_action": "block",
+    "in_disabled_list": true
+  },
+  "pipeline_page": {
+    "l1": true,
+    "cascade": true,
+    "l2": false,
+    "l3": true,
+    "bridge": true,
+    "l1Action": "red_line_only",
+    "logCompression": "100",
+    "auditCompression": "95",
+    "path": "L1 开 → L3 云端单盲（桥接已开）—— L1 未命中的事件直接交给云端 L3 复核；因为只剩 L3 一票，L3 说有问题也只出标准级告警，不会挂起、不会亮最高级红灯。"
+  },
+  "extreme_summary": {
+    "presentation": {
+      "ok": true,
+      "log_compression": 100,
+      "audit_compression": 95
+    },
+    "merged_rows": [
+      "[读取] core/auth.py 等 5 个文件"
+    ],
+    "merged_count": 1,
+    "five_reads_merged": true
+  },
+  "bridge": {
+    "mock_l3_calls": 7,
+    "mock_l3_bodies": [
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nON_TRACK —— \n\n【最近步骤】\n【最近步骤】\n第1步 [unknown] （无命令文本）\n第2步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/auth.py\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nON_TRACK —— \n\n【最近步骤】\n【最近步骤】\n第1步 [unknown] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/auth.py\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nLOOP —— 连续 3 次读取同一个文件，疑似死循环: core/auth.py\n\n【最近步骤】\n【最近步骤】\n第1步 [unknown] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Read] （无命令文本）\n第4步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/auth.py\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nLOOP —— 连续 4 次读取同一个文件，疑似死循环: core/auth.py\n\n【最近步骤】\n【最近步骤】\n第1步 [Read] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Read] （无命令文本）\n第4步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/auth.py\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nLOOP —— 连续 5 次读取同一个文件，疑似死循环: core/auth.py\n\n【最近步骤】\n【最近步骤】\n第1步 [Read] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Read] （无命令文本）\n第4步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/auth.py\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nON_TRACK —— \n\n【最近步骤】\n【最近步骤】\n第1步 [Read] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Read] （无命令文本）\n第4步 [Bash] pytest -q tests/\n\n【本步动作】\npytest -q tests/\n\n现在输出 JSON。",
+      "【L2 本地模型的判定】\nL2 已关闭（由 L3 直接复核） —— L2 已关闭\n\n【L1 规则层的判定】\nON_TRACK —— \n\n【最近步骤】\n【最近步骤】\n第1步 [Read] （无命令文本）\n第2步 [Read] （无命令文本）\n第3步 [Bash] pytest -q tests/\n第4步 [Read] （无命令文本）\n\n【本步动作】\n正常读取: core/users.py\n\n现在输出 JSON。"
+    ],
+    "l2_assembled": false,
+    "l2_calls": 0
+  }
+}

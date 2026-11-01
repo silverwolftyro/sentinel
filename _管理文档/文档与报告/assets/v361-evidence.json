@@ -1,0 +1,526 @@
+{
+  "version": "v3.6.1",
+  "port": 8154,
+  "demo_log": "mcode.jsonl",
+  "radar_root": "D:\\项目\\<项目目录>\\logs\\v361-demo\\radar-root",
+  "vertical": {
+    "before": {
+      "resizer_audit": {
+        "top": 413,
+        "bottom": 421,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 411,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 200
+      },
+      "alert_head": {
+        "top": 423,
+        "bottom": 466,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 466,
+        "bottom": 951,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 485
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 302,
+        "right": 1077,
+        "width": 775,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 280,
+        "right": 288,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 266,
+        "width": 248,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1091,
+        "right": 1099,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1113,
+        "right": 1582,
+        "width": 469,
+        "height": 742
+      },
+      "audit_h_var": "200px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "after_down": {
+      "resizer_audit": {
+        "top": 503,
+        "bottom": 511,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 501,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 290
+      },
+      "alert_head": {
+        "top": 513,
+        "bottom": 556,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 556,
+        "bottom": 951,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 395
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 302,
+        "right": 1077,
+        "width": 775,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 280,
+        "right": 288,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 266,
+        "width": 248,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1091,
+        "right": 1099,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1113,
+        "right": 1582,
+        "width": 469,
+        "height": 742
+      },
+      "audit_h_var": "290px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "after_up": {
+      "resizer_audit": {
+        "top": 413,
+        "bottom": 421,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 411,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 200
+      },
+      "alert_head": {
+        "top": 423,
+        "bottom": 466,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 466,
+        "bottom": 951,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 485
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 302,
+        "right": 1077,
+        "width": 775,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 280,
+        "right": 288,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 266,
+        "width": 248,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1091,
+        "right": 1099,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1113,
+        "right": 1582,
+        "width": 469,
+        "height": 742
+      },
+      "audit_h_var": "200px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "handle_follows_mouse_down": true,
+    "handle_follows_mouse_up": true,
+    "flow_grows_on_drag_down": true,
+    "flow_shrinks_on_drag_up": true,
+    "alert_shrinks_on_drag_down": true,
+    "alert_grows_on_drag_up": true,
+    "panel_height_unchanged": true,
+    "flow_above_handle_in_dom": true,
+    "handle_delta_down": 90,
+    "handle_delta_up": -90,
+    "flow_delta_down": 90,
+    "flow_delta_up": -90,
+    "alert_delta_down": -90,
+    "alert_delta_up": 90,
+    "screenshot_down": "v361-drag-down.png",
+    "screenshot_up": "v361-drag-up.png"
+  },
+  "horizontal": {
+    "before": {
+      "resizer_audit": {
+        "top": 413,
+        "bottom": 421,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 411,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 200
+      },
+      "alert_head": {
+        "top": 423,
+        "bottom": 466,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 466,
+        "bottom": 951,
+        "left": 303,
+        "right": 1076,
+        "width": 773,
+        "height": 485
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 302,
+        "right": 1077,
+        "width": 775,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 280,
+        "right": 288,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 266,
+        "width": 248,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1091,
+        "right": 1099,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1113,
+        "right": 1582,
+        "width": 469,
+        "height": 742
+      },
+      "audit_h_var": "200px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "after_sessions": {
+      "resizer_audit": {
+        "top": 413,
+        "bottom": 421,
+        "left": 423,
+        "right": 1076,
+        "width": 653,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 411,
+        "left": 423,
+        "right": 1076,
+        "width": 653,
+        "height": 200
+      },
+      "alert_head": {
+        "top": 423,
+        "bottom": 466,
+        "left": 423,
+        "right": 1076,
+        "width": 653,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 466,
+        "bottom": 951,
+        "left": 423,
+        "right": 1076,
+        "width": 653,
+        "height": 485
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 422,
+        "right": 1077,
+        "width": 655,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 400,
+        "right": 408,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 386,
+        "width": 368,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1091,
+        "right": 1099,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 1113,
+        "right": 1582,
+        "width": 469,
+        "height": 742
+      },
+      "audit_h_var": "200px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "after_stream": {
+      "resizer_audit": {
+        "top": 413,
+        "bottom": 421,
+        "left": 423,
+        "right": 956,
+        "width": 533,
+        "height": 8
+      },
+      "flow": {
+        "top": 211,
+        "bottom": 411,
+        "left": 423,
+        "right": 956,
+        "width": 533,
+        "height": 200
+      },
+      "alert_head": {
+        "top": 423,
+        "bottom": 466,
+        "left": 423,
+        "right": 956,
+        "width": 533,
+        "height": 43
+      },
+      "alert_body": {
+        "top": 466,
+        "bottom": 951,
+        "left": 423,
+        "right": 956,
+        "width": 533,
+        "height": 485
+      },
+      "panel": {
+        "top": 210,
+        "bottom": 952,
+        "left": 422,
+        "right": 957,
+        "width": 535,
+        "height": 742
+      },
+      "resizer_sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 400,
+        "right": 408,
+        "width": 8,
+        "height": 742
+      },
+      "sessions": {
+        "top": 210,
+        "bottom": 952,
+        "left": 18,
+        "right": 386,
+        "width": 368,
+        "height": 742
+      },
+      "resizer_stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 971,
+        "right": 979,
+        "width": 8,
+        "height": 742
+      },
+      "stream": {
+        "top": 210,
+        "bottom": 952,
+        "left": 993,
+        "right": 1582,
+        "width": 589,
+        "height": 742
+      },
+      "audit_h_var": "200px",
+      "panel_children": [
+        "live-audit",
+        "resizer-audit",
+        "panel__head",
+        "panel__body"
+      ]
+    },
+    "sessions_handle_follows": true,
+    "sessions_widens": true,
+    "stream_handle_follows": true,
+    "stream_widens": true,
+    "sessions_handle_delta": 120,
+    "sessions_width_delta": 120,
+    "stream_handle_delta": -120,
+    "stream_width_delta": 120,
+    "screenshot": "v361-drag-horizontal.png"
+  },
+  "persistence": {
+    "flow_height_before": 200,
+    "flow_height_after": 200,
+    "flow_height_kept": true
+  }
+}

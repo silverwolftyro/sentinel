@@ -1,0 +1,71 @@
+{
+  "port": 8145,
+  "mode": "exe",
+  "exe": "D:\\项目\\<项目目录>\\_构建与发布\\dist\\sentinel.exe",
+  "dpi_aware": true,
+  "command": [
+    "D:\\项目\\<项目目录>\\_构建与发布\\dist\\sentinel.exe",
+    "--radar",
+    "--config",
+    "D:\\项目\\<项目目录>\\logs\\v340-demo\\config.yaml",
+    "--alert-log",
+    "D:\\项目\\<项目目录>\\logs\\v340-demo\\alert.log",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8145",
+    "--no-browser",
+    "--no-health",
+    "--no-guardian"
+  ],
+  "tray_found": true,
+  "tray_windows": [
+    27986356,
+    4721906
+  ],
+  "menu_shown": true,
+  "menu_items": [
+    {
+      "text": "打开看板",
+      "id": 1,
+      "rect": [
+        1324,
+        776,
+        1464,
+        798
+      ]
+    },
+    {
+      "text": "",
+      "id": 0,
+      "rect": [
+        1324,
+        798,
+        1464,
+        807
+      ]
+    },
+    {
+      "text": "彻底退出",
+      "id": 3,
+      "rect": [
+        1324,
+        807,
+        1464,
+        829
+      ]
+    }
+  ],
+  "menu_screen_rect": [
+    1324,
+    776,
+    1464,
+    829
+  ],
+  "clicked_with_mouse": true,
+  "process_exited": true,
+  "exit_code": 2,
+  "sentinel_processes_left": 0,
+  "port_still_listening": false,
+  "tray_window_left": false
+}

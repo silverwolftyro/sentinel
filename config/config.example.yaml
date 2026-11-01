@@ -1,0 +1,617 @@
+# 哨兵 Sentinel —— 主配置模板
+#
+# 这是**可入库的模板**（config/config.example.yaml）。
+# 用法：复制一份为 config/config.yaml 后按需修改：
+#     cp config/config.example.yaml config/config.yaml
+# config/config.yaml 已被 .gitignore 忽略，不会入库。
+
+# ---------- 采集层 ----------
+collection:
+  # 要监听的日志目录列表（被监控 Agent 的日志 / JSONL 输出目录）
+  watch_dirs: []
+  # 监听的日志文件匹配模式（glob）
+  watch_patterns:
+    - "*.jsonl"
+    - "*.log"
+  # 轮询兜底间隔（秒）—— 哨兵监听文件用的是 mtime 轮询（src/tailer.py），
+  # 没有引入 watchdog 之类的第三方监听库。
+  poll_interval: 5.0
+  # 断点续传：记录每个文件已读取的字节偏移
+  resume_from_offset: true
+
+# ---------- 规则层（L1） ----------
+rules:
+  # 是否启用 L1 规则检测
+  enabled: true
+  # 规则包目录（相对项目根）
+  rule_dirs:
+    - "src/rules/builtin"
+  # 单条规则默认等级：info / warn / critical
+  default_level: "warn"
+  # 命中的规则是否继续送入 L2 模型审查
+  escalate_to_llm: true
+
+  # ---- v3.7.0：L1 命中后的拦截策略 ----
+  # red_line_only —— 只拦红线级（默认，行为与 v3.6.x 完全一样）
+  # suspend       —— 高危命令命中就**直接挂起**
+  # alert         —— 只告警，**绝不挂起**
+  # escalate      —— 先不挂起，等 L2/L3 双盲结论再定
+  l1_action: "red_line_only"
+  # 被**关闭**的规则 id（每条规则一个开关，见 /settings/rules）
+  disabled_rules: []
+  # 被降级成「仅记录」的规则 id
+  # —— 命中照样出告警，但严重度降为 standard，**不会**触发守护者挂起
+  log_only_rules: []
+  # 用户自定义规则；每项是**一段 JSON 文本**（写回器只支持标量列表）
+  # ⚠️ 自定义规则只能是「高危命令」—— 红线与死循环是结构化判定，
+  #    一条正则表达不出来，导入时会明确报错跳过。
+  custom_rules: []
+
+  # ---- 高危命令正则 ----
+  # 这里是**增量**：下表会追加到 src/rules/basic.py 里的内置表之后。
+  # 内置表已覆盖 rm -rf / sudo / chmod 777 / git push -f 等常见高危操作。
+  dangerous_commands:
+    - '\brm\s+(?:--recursive\b|--force\b|-\w*[rR]\w*)'
+    - '\bsudo\b'
+    - '\bchmod\s+(?:-[A-Za-z]+\s+)*777\b'
+    - '\bgit\s+push\b[^|;&\n]*?(?:--force(?![-\w])|\s-f(?:orce)?(?![-\w]))'
+    - '\brmdir\b[^|;&\n]*\s/s\b'
+    - '\bdel\b\s+/[fsq]\b'
+    - '\bRemove-Item\b[^|;&\n]*-Recurse'
+    - '\bformat\b\s+[a-zA-Z]:'
+    - '\bmkfs(?:\.[a-z0-9]+)?\b'
+    - '\bdd\b[^|;&\n]*\bof=/dev/'
+    - '\bInvoke-Expression\b|\biex\b'
+    - '\bSet-ExecutionPolicy\b[^|;&\n]*\bUnrestricted\b'
+    - '\bchown\b[^|;&\n]*\s-R\s+root\b'
+    - '\bcurl\b[^|;&\n]*\|\s*(?:ba|z|k)?sh\b'
+    - '\bwget\b[^|;&\n]*\|\s*(?:ba|z|k)?sh\b'
+    - '\bhistory\s+-c\b'
+    - '\bshutdown\b|\breboot\b|\bhalt\b'
+  # 置为 true 则用上面的列表**整体替换**内置表（默认增量追加）
+  dangerous_commands_replace: false
+
+  # ---- 红线级判定（catastrophic）----
+  # 红线 = 「一旦执行就回不来」的操作，是守护者模式的唯一触发源。
+  # 判定逻辑在 src/rules/basic.py 的 CatastrophicDetector 里。
+  catastrophic:
+    enabled: true
+    # 启用的红线类别；删掉某一项即可关闭该类别。
+    #   root_delete  —— 递归删除根目录 / 家目录 / 整盘
+    #   mass_delete  —— 批量删除大量文件（通配符 / find -delete / git clean）
+    #   disk_wipe    —— 整盘抹除或覆写块设备（format / mkfs / dd of=/dev/）
+    #   remote_exec  —— 下载远程内容直接执行（curl … | sh）
+    categories:
+      - "root_delete"
+      - "mass_delete"
+      - "disk_wipe"
+      - "remote_exec"
+
+  # ---- 死循环检测 ----
+  loop:
+    enabled: true
+    # 连续读取同一个文件达到该次数即判定为疑似死循环
+    same_file_read_threshold: 3
+    # 读 / 写工具名特征；留空则使用 src/rules/basic.py 的内置默认
+    read_tools: []
+    write_tools: []
+
+  # ---- 时间盒：硬性拦截「一个子任务吃掉整轮」（v3.3.0）----
+  #
+  # 这条策略来自《Agent 跑偏警示录》的真实根因：
+  # 「下载依赖、修测试、给引擎装权重」—— 一件事干到天荒地老，
+  # 主任务却一动没动。
+  #
+  # 哨兵给「同一类操作」开一个时间盒；盒子里反复做同一件事，
+  # 时间用完就判定**严重跑偏**（``[CRITICAL] 严重跑偏``）。
+  timebox:
+    enabled: true
+    # 时间盒长度（分钟）
+    window_minutes: 15
+    # 至少重复几次才判定（低于这个数不算「死磕」）
+    min_repeats: 3
+    # 盯哪些**类别**（启用「同类堆积」判定）。
+    #   dependency —— 装依赖 / 下载（pip / npm / curl / git clone …）
+    #   test       —— 跑测试（pytest / npm test / go test …）
+    #   build      —— 编译打包
+    #   edit       —— 改代码（⚠️ 正常干活也会一直改，默认**不**盯）
+    #   search     —— 搜索
+    # ⚠️ 「同一条命令反复出现」这条判定**不受**本列表限制 ——
+    #    同一条命令磨满一个时间盒，本身就值得看一眼。
+    categories:
+      - "dependency"
+      - "test"
+    # 撞破时间盒后，**要不要让守护者直接挂起**死磕的进程。
+    # ⚠️ 这是一个**三态**开关：
+    #    null（默认，留空）—— **跟着守护者的武装状态走**：
+    #        守护者武装着（enabled 且 intervention_mode=guardian）才挂起；
+    #        没武装就只告警（守护者默认只观察，不该动别人的进程）。
+    #    true  —— 只要**有**守护者就挂起。
+    #    false —— **永远不挂**，只告警。
+    #    挂起是**可逆**的（看板上一键恢复）。
+    guardian_suspend: null
+
+  # ---- 规则热重载（v2.2.0）----
+  # 改完这份 config.yaml 之后，哨兵会在后台**自动**重新加载规则，
+  # 不用重启。终端会打印：
+  #     [SENTINEL] 检测到规则更新，热重载完成。
+  #
+  # ⚠️ 只热替换**规则引擎**（高危命令正则、红线类别、死循环阈值）。
+  #    通知通道、守护者这些**不重建** —— 它们要重启哨兵才生效。
+  # ⚠️ 配置写坏了（YAML 非法）时会**保留旧规则**并报错，
+  #    绝不会让防线因为一次手滑而清零。
+  hot_reload:
+    enabled: true
+    # 盯盘间隔（秒）—— 文件改动后大约这么久才会生效。
+    interval: 1.0
+
+# ---------- 本地模型层（L2） ----------
+llm:
+  enabled: true
+  # 提供方：
+  #   openai_compatible —— 任意 OpenAI 兼容 API
+  #                       （本机 NInfer / DeepSeek / Kimi / 硅基流动 /
+  #                        自建 vLLM / one-api 网关）
+  #   ollama            —— 旧版本地 Ollama（本机已换掉）
+  #
+  # ⚠️ **地址在本机（127.0.0.1 / localhost）= 数据一步没出本机**（红线 R4）；
+  #    换成公网地址才意味着「被审查的日志内容会离开本机」。
+  #    哨兵会自动识别本机地址，不会对本地引擎喊「数据要外送」。
+  provider: "openai_compatible"
+  base_url: "http://127.0.0.1:8888/v1"
+  # ⚠️ 模型名必须跟 `GET <base_url>/models` 返回的**完全一致**。
+  # 本机 NInfer（Bonsai2-27B）返回的就是 `bonsai2-27b`。
+  # 自检：浏览器打开 http://127.0.0.1:8888/v1/models 看一眼。
+  model: "bonsai2-27b"
+  # ⚠️ **本地推理引擎的超时必须拉满** ——
+  # 27B 推理模型一次回复光「思考」就可能吃掉几千 token
+  # （实测 44 token/秒），再加首次预填充，60 秒必然判不了。
+  # 超时是**上限**不是固定等待 —— 模型答完立刻返回。
+  # 哨兵对本机地址还有一层兜底：超时自动不低于 600 秒。
+  timeout: 600
+  # 提交给模型的上下文最大字符数（先做脱敏与截断）
+  max_context_chars: 4000
+  # 判定为异常的分数阈值（0.0 ~ 1.0）
+  risk_threshold: 0.7
+  # 是否在送入模型前对敏感内容脱敏（同时用于告警落盘）
+  # ⚠️ 接外部 API 时这一项务必保持 true —— 密钥在离开本机前就被抹掉
+  redact_before_llm: true
+  # 熔断：连续失败 N 次后打开，期间直接跳过模型解释
+  failure_threshold: 3
+  breaker_open_seconds: 300
+
+  # ---- openai_compatible 使用 ----
+  # API 密钥。**优先用环境变量** SENTINEL_LLM_API_KEY，
+  # 不要把密钥写进这个文件（它虽然不入库，但仍会明文落在磁盘上）。
+  # 本机 NInfer **不校验密钥**，但填个占位串最省事（有些网关没这个头会 401）。
+  api_key: "sk-no-key-required"
+  # 采样温度；0 = 可复现，不要模型发挥
+  temperature: 0
+  # 单次回复的最大 token 数。
+  # ⚠️ **推理模型的「思考」也算在里面** —— 给小了，思考段就把预算吃光，
+  #    正文（content）一个字都吐不出来（实测 1024 就是这样）。
+  max_tokens: 8192
+  # 是否发送 response_format={"type":"json_object"}（让模型只吐 JSON）
+  # ⚠️ **NInfer 默认不认这个字段** —— 发了直接回 400
+  #    （要它支持得用 --structured-output 启动引擎）。
+  #    哨兵还有一层兜底：真收到 400 会自动摘掉字段重试一次。
+  json_mode: false
+  # 附加请求头（某些网关需要自定义头）
+  extra_headers: {}
+
+  # ---- 本地引擎心跳看门狗（v3.3.0）----
+  #
+  # NInfer 会掉线，而且**掉得不声不响** —— 端口还在，模型不说话了。
+  # 引擎一掉，**整个 L2 层静默失效**：规则层还在跑，
+  # 但没有「人话解释」，用户会以为哨兵坏了。
+  #
+  # 看门狗每 ``interval`` 秒发一个**只读**的 ``GET /models``（不触发推理），
+  # 掉线了立刻在终端 + 看板 + 手机上发红色警告。
+  watchdog:
+    enabled: true
+    # 探活间隔（秒）
+    interval: 30
+    # 单次探活超时（秒）—— 别设太大，掉了要尽快知道
+    timeout: 8
+    # ⚠️ v3.3.0：**不会**自动拉起引擎 ——
+    #    哨兵只做**只读监控**，不替用户启动进程。
+    #    引擎掉了它会喊你，你自己拉（本地 NInfer：双击引擎目录里的启动面板）。
+    #    下面的 restart 段是 v3.3.0 初稿留下的，**会被忽略**。
+    restart:
+      enabled: false
+      command: []
+      cwd: ""
+      max_attempts: 0
+      cooldown_seconds: 300
+
+  # ---- openai_compatible 的典型配置示例（取消注释并替换）----
+  # provider: "openai_compatible"
+  # base_url: "https://api.deepseek.com/v1"
+  # model: "deepseek-chat"
+  # api_key: ""          # 或设环境变量 SENTINEL_LLM_API_KEY
+  #
+  # provider: "openai_compatible"
+  # base_url: "https://api.moonshot.cn/v1"
+  # model: "moonshot-v1-8k"
+  #
+  # provider: "openai_compatible"
+  # base_url: "http://127.0.0.1:8000/v1"   # 本地 vLLM / LM Studio
+  # model: "Qwen2.5-7B-Instruct"
+
+  # ---------- 多级模型路由（v1.2.0）----------
+  # 平时用上面的主力模型省钱；一旦**红线级拦截**或**连续漂移**，
+  # 自动换强模型来写解释和晨报。
+  # ⚠️ 启用 fallback = 允许被审查的日志内容**离开本机**。
+  #
+  # ⚠️ **本机默认关掉**：NInfer 本身就是本地强模型，
+  #    再挂一个云端 fallback 只会把内容送出本机（破坏红线 R4）。
+  #    真要开（比如想用云端模型写更细的解释），把它改成 true，
+  #    并且**清楚代价**。
+  routing:
+    enabled: false
+    escalate_on_red_line: true
+    # 连续判为漂移几次后升级（1 = 第二次连续漂移由强模型来判）
+    drift_escalate_threshold: 1
+    # 升级用的模型。**留空（注释掉整段）= 不启用升级**，
+    # 行为与 v1.1.0 完全一致。
+    fallback:
+      provider: "openai_compatible"
+      base_url: "https://api.deepseek.com"
+      model: "deepseek-chat"
+      # 密钥环境变量名（留空则依次尝试
+      # SENTINEL_LLM_API_KEY → DEEPSEEK_API_KEY → MOONSHOT_API_KEY …）
+      api_key_env: "DEEPSEEK_API_KEY"
+      timeout: 60
+      temperature: 0
+      # ⚠️ 推理模型（deepseek-flash / R1）会把 token 花在「思考」上，
+      #    max_tokens 给小了正文会被截空 —— 至少给 1024。
+      max_tokens: 1024
+      json_mode: true
+
+  # ---------- v3.5.0：级联审核（L1 规则 → L2 本地过滤 → L3 云端终审） ----------
+  #
+  # 三级各司其职：
+  #   L1  正则规则层 —— 命中就拦，零成本；
+  #   L2  本地小模型 —— 三值判定（还在做吗？），**不花钱、不出网**；
+  #   L3  云端强模型 —— 对 L2 的判定做**交叉验证**，要钱、要出网。
+  #
+  # 为什么要级联：单用云端，每次判定都花钱且要把日志送出本机；
+  # 单用本地，小模型误报率高。**让便宜的去筛，让贵的去判。**
+  #
+  # ⚠️ **默认关闭** —— 行为与 v3.4.0 完全一样。
+  #    打开之前请先确认 L2 的模型在本机跑得起来。
+  cascade:
+    enabled: false
+    # 是否要求「双盲一致」才亮红灯（强烈建议保持 true）——
+    # 单边判定就拉最高级警报，只会训练用户忽略警报。
+    require_agreement: true
+    # L2 连续失败多少次后熔断（熔断期间直接跳过 L2）
+    breaker_threshold: 3
+    # 熔断持续时长（秒）
+    breaker_open_seconds: 60
+
+    # ---------- L2：本地极速过滤 ----------
+    # ⚠️ 这一段**不复用**顶层 llm 的字段 —— 它是**另一个模型**。
+    l2:
+      # v3.7.0：独立开关。关掉之后 L2 **完全不会被装配**
+      # （不是「装配了但不用」—— 那样本地模型照样占显存）。
+      enabled: true
+      provider: "openai_compatible"
+      # 本机 NInfer 的 OpenAI 兼容端点（数据一步没出本机）
+      base_url: "http://127.0.0.1:8888/v1"
+      # ⚠️ 模型名必须跟 `GET <base_url>/models` 返回的**完全一致**。
+      # L2 要的是「**快**」，所以挑**小**模型，别用 27B。
+      model: "bonsai2-27b"
+      # ⚠️ **10 秒就放弃** —— L2 是极速过滤器，不是主力模型。
+      #    本机引擎默认有 600 秒的超时下限（给 27B 思考留时间），
+      #    这里显式把下限压到 10 秒：超时就立刻回退 L1 的原始判定，
+      #    **绝不堵住主队列**。
+      timeout: 10
+      timeout_floor: 10
+      # 单次回复的上限 —— 三值判定只要几十个字
+      max_tokens: 256
+      # ⚠️ **关掉思考** —— L2 不需要 CoT，
+      #    思考段会把单次判定拖长好几倍，而本地引擎是**单并发**的。
+      #    不支持这个字段的引擎会回 400，哨兵会自动摘掉它重试。
+      reasoning_effort: "none"
+      temperature: 0
+      # 要求模型只吐 JSON（引擎不支持时会自动降级）
+      json_mode: true
+
+    # ---------- L3：云端终审（交叉验证） ----------
+    # ⚠️ **留空（注释掉整段）= 只跑 L2，没有交叉验证**。
+    #    没有 L3 就**凑不齐双盲**，所以**永远不会亮红灯** ——
+    #    这是刻意的：宁可漏报也不要误报最高级警报。
+    l3:
+      # v3.7.0：独立开关。关掉之后级联通路整体退回「单层」模式。
+      enabled: true
+      provider: "openai_compatible"
+      base_url: "https://api.deepseek.com"
+      model: "deepseek-chat"
+      # 密钥环境变量名（留空则依次尝试
+      # SENTINEL_LLM_API_KEY → DEEPSEEK_API_KEY → MOONSHOT_API_KEY …）
+      api_key_env: "DEEPSEEK_API_KEY"
+      timeout: 30
+      max_tokens: 1024
+      temperature: 0
+      json_mode: true
+
+    # ---------- v3.7.0：L2 → L3 桥接 ----------
+    # 打开后，**L1 没有命中**的事件会被直接送给云端 L3 复核
+    #（前提：L2 已关闭、L3 已打开）。
+    # ⚠️ 走这条路时只有 L3 一个视角 —— 属于**单盲**，
+    #    所以 L3 说有问题也**只出标准级告警，绝不挂起**。
+    # ⚠️ 只送「工具调用」事件 —— 思考过程与纯文本不上云。
+    bridge_l1_to_l3: false
+
+    # ---------- v3.8.0：L2 掉线热切 L3 ----------
+    # L2 **临时性**掉线（连不上 / 429 / 503 / 超时 / 熔断中）时，
+    # 把**原本给 L2 的载荷**自动转给 L3，并在告警流水区标注
+    # 「[WARN] L2 掉线，已自动切换至 L3 深度审查」。
+    # ⚠️ 这也是**单盲** —— 只有 L3 一票，
+    #    所以**绝不亮最高级红灯、绝不挂起 Agent**
+    #    （「双盲一致才升级红线」这条原则一字未改）。
+    # ⚠️ L3 也挂时会**安静回退 L1** —— 不报错、不卡死。
+    failover_to_l3: true
+
+    # ---------- v3.8.0：L3 回退预算熔断 ----------
+    # 统计窗口（秒）内最多热切多少次；0 = 不限次数。
+    l3_fallback_limit: 100
+    # 统计窗口长度（秒）—— 默认一小时。
+    l3_fallback_limit_seconds: 3600
+    # 窗口内的**金额**上限（同一个币种）；0 = 不限金额。
+    l3_fallback_cost_limit: 0
+    # 每次热切的**预估**费用；配合上一项算出窗口内的预估花费。
+    # ⚠️ 这是**你自己填的估算值**，实际账单以服务商为准。
+    # ⚠️ 两项都为 0 时，金额维度**不生效**（只按次数算）。
+    l3_fallback_unit_cost: 0
+    # ⚠️ 预算耗尽时：放弃这次云端调用、回退 L1 纯规则，
+    #    并发一条**严重系统告警**（它说的是「预算用完了」，
+    #    不是「Agent 干了坏事」，所以不挂起 Agent）。
+
+# ---------- 记忆管理（v3.5.0） ----------
+memory:
+  # 短期记忆保留几步（3-5 之间）。
+  # ⚠️ Tool Call + Result 是**原子对**，不可拆分 ——
+  #    只留一半会让模型看到「要删库」却看不到「删了 3 个文件」。
+  short_term_steps: 4
+  # 被挤出窗口的事件累积到多少条时，后台异步做一次滚动摘要
+  long_term_threshold: 10
+
+# ---------- v3.7.0：呈现与摘要（统一调控中心）----------
+# 主看板上的调节旋钮已全部移走，这两个值就是它们的**新家**
+# （在 /settings/pipeline 里用滑条调）。
+#
+# log_compression   —— 右侧「被监控日志」的极限压缩档位（0-100）
+#   0-30   纯代码：原始 JSON
+#   30-70  自然语言
+#   70-99  高度摘要
+#   100    **极限摘要**：连续的同类动作会被**真的合并**
+#          （连续 5 次读文件 → 「[读取] core/auth.py 等 5 个文件」）
+#
+# audit_compression —— 中间「实时审核流水」的极限压缩档位（0-100）
+#   100 时思考过程全部省略，只留核心结论与危险动作。
+presentation:
+  log_compression: 40
+  audit_compression: 60
+
+# ---------- 告警干预层 ----------
+alert:
+  enabled: true
+  # 全局最低告警等级：info / warn / critical
+  min_level: "info"
+  # v2.1.0：启动时**真的**往真实 Webhook 发一条自检消息，
+  # 用来确认「手机真的能收到」。消息里带版本号与本机 IP。
+  # ⚠️ 这不是模拟 —— 配了就会真的发出去。
+  #    嫌吵就改成 false。
+  webhook_startup_test: true
+  channels:
+    # 终端打印。默认关闭 —— 引擎本身已经带颜色地打印到终端了，
+    # 再开这个会重复输出两遍。单独使用 Notifier 时才需要打开。
+    - type: "console"
+      enabled: false
+    # 结构化 JSONL 落盘（给人看的是 logs/sentinel_alert.log，这里给机器读）
+    - type: "file"
+      enabled: true
+      path: "logs/alerts.jsonl"
+    # 操作系统级弹窗（Windows 用 PowerShell NotifyIcon，macOS 用 osascript）
+    - type: "desktop"
+      enabled: true
+      title: "哨兵告警"
+    # 系统警报音（Windows 走 stdlib winsound，其余平台走系统播放器）
+    - type: "sound"
+      enabled: true
+    # ---- Webhook（远程叫醒服务）----
+    # 桌面弹窗只在**有人盯着屏幕**时有用。半夜真正能叫醒人的是手机推送。
+    # 格式：dingtalk | feishu | serverchan | bark | generic
+    #
+    # ★ 投递在**后台线程**里完成 —— 主事件流绝不会被一个 10 秒的网络
+    #   超时卡住（红线 R5）。失败按**指数退避**重试：
+    #   1 次 → 等 1s → 2 次 → 等 2s → 3 次 → 放弃。
+    #   只有临时性故障才重试（网络错误 / 超时 / 5xx / 429）；
+    #   4xx（URL 错、签名错）重试多少次都没用，立刻放弃。
+    #
+    # ---- 各家地址与配置速查（把 enabled 改成 true 并填上 url 即可）----
+    #   钉钉：     format: "dingtalk"
+    #              url: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+    #              secret: "SEC..."          # 开了「加签」才需要
+    #   飞书：     format: "feishu"
+    #              url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    #              secret: "SEC..."          # 开了「签名校验」才需要
+    #   Server酱： format: "serverchan"
+    #              url: "https://sctapi.ftqq.com/xxx.send"
+    #   Bark：     format: "bark"
+    #              url: "https://api.day.app/你的key"
+    #              sound: "siren"            # 可选提示音
+    #   自建网关： format: "generic"
+    #              url: "http://127.0.0.1:9000/hook"
+    - type: "webhook"
+      enabled: false
+      url: ""                       # 例：https://oapi.dingtalk.com/robot/send?access_token=xxx
+      timeout: 10
+      format: "dingtalk"
+      card: true                   # 发 Markdown 卡片而不是纯文本
+      secret: ""                   # 钉钉 / 飞书的加签密钥
+      # 只推这些触发类型（整个列表留空 = 推全部告警）：
+      #   guardian_intercept —— 守护者**真的挂起**了目标进程
+      #   intent_drift       —— 连续意图漂移
+      #   context_anomaly    —— 死循环 / 敏感数据外泄
+      #   timebox_exceeded   —— 撞破时间盒，严重跑偏（v3.3.0）
+      #   engine_offline     —— 本地推理引擎掉线（L2 已停用，v3.3.0）
+      # ⚠️ 清空列表是「我全都要」，不是「都别推」—— 哨兵不会静默吞掉告警。
+      triggers:
+        - "guardian_intercept"
+        - "intent_drift"
+        - "timebox_exceeded"
+        - "engine_offline"
+      dedup_seconds: 60            # 防骚扰：同一条事件 60 秒内只推一次
+      sound: ""                    # Bark 的提示音名
+      max_retries: 2                # 失败后的最大重试次数（不含首次尝试）
+      retry_backoff: 1              # 重试退避基数（秒）；实际等待 = 基数 × 2ⁿ
+  # 干预动作：
+  #   advisory      —— 仅告警（默认）
+  #   notify        —— 额外走通知通道
+  #   request_stop  —— 发送中断请求
+  #   guardian      —— 守护者模式：红线级事件会真的挂起被监控进程
+  intervention_mode: "advisory"
+
+# ---------- 守护者（Guardian）----------
+# 守护者是哨兵唯一的「主动干预」能力。默认关闭 —— 权限必须小于用户，
+# 需要用户显式把上面的 intervention_mode 改成 guardian 才会生效。
+guardian:
+  # 冗余开关；intervention_mode=guardian 时会自动开启
+  enabled: false
+  # 被监控进程的 PID；留空则由引擎按日志路径自动探测
+  target_pid: null
+  # 从文件读取 PID 的路径（与 target_pid 二选一）
+  pid_file: ""
+  # 干预动作：
+  #   auto    —— Windows 用挂起，POSIX 用 SIGINT（默认）
+  #   suspend —— 只挂起
+  #   sigint  —— 只发中断信号（Windows 上会自动降级为挂起）
+  action: "auto"
+  # 永远不拦截的规则 ID（用户永久白名单）
+  allowed_rules: []
+  # 视为「内部」的主机：往这些地址外发不算「外发到外部地址」。
+  # 注意：内网 IP（10.x / 192.168.x）**不在**默认名单里 ——
+  # 数据发到内网同样算离开了本机。
+  internal_hosts:
+    - "localhost"
+    - "127.0.0.1"
+    - "0.0.0.0"
+    - "::1"
+  # 干预与放行的审计日志（人类可读）
+  audit_log: "logs/guardian.log"
+  # 用户放行的结构化留痕
+  override_log: "logs/guardian_overrides.json"
+
+# ---------- 任务目标（意图锚定） ----------
+# 用户给 Agent 的原始目标。哨兵用它判断「Agent 还在做这件事吗」。
+# 留空 = 不做意图漂移检测（没有目标就没有「偏离」可言）。
+# 也可以用命令行 --task-goal 临时指定，或在看板顶栏的输入框里随时改。
+task_goal: ""
+
+# ---------- 意图漂移检测 ----------
+drift:
+  enabled: true
+  # 每收集多少个「思考 + 工具调用」事件做一次判定
+  window: 5
+  # 连续几次判定为漂移才告警（5 × 2 = 10 步）
+  threshold: 2
+
+# ---------- 上下文模式检测 ----------
+context:
+  enabled: true
+  # 最近保留多少个工具事件（供告警上下文与调试）
+  window: 5
+  # 连续多少次测试失败判定为「卡住」
+  stuck_threshold: 3
+
+# ---------- 安全点（危险操作快照与回滚，v2.0.0） ----------
+# 红线级操作被拦截时，哨兵会在**挂起进程之前**给工作目录打一次快照，
+# 看板上随后会出现【一键回滚至拦截点】——
+# 用户发现 Agent 之前把代码改乱了，点一下就能退回去。
+safe_point:
+  # 是否启用安全点。关掉就完全不往用户目录里写东西。
+  enabled: true
+  # 快照存放目录（留空 = <工作目录>/.sentinel/safepoints）
+  root: ""
+  # 目录总量超过这个值就降级成「增量模式」：
+  # 只备份最近改动过的文件，其余只记清单。
+  max_bytes: 67108864      # 64 MB
+  # 文件数超过这个值同样降级。
+  max_files: 20000
+  # 单次快照的时间预算（秒）—— 超时立刻收手，保证「极速」。
+  max_seconds: 3.0
+  # 增量模式下「最近改动过」的判定窗口（分钟）。
+  recent_minutes: 30
+
+# ---------- 指令注入（把话送给 Agent，v2.0.0） ----------
+# 看板的【直接发送给 Agent】按钮走这里。
+# 优先往 Agent 的标准输入写；CLI 不读 stdin 时降级到「留言箱」，
+# 指令留在 <工作目录>/sentinel_inbox.json 里，下次启动时注入任务提示。
+intervention:
+  enabled: true
+  # 留言箱文件名（落在被监控 Agent 的工作目录里）
+  inbox_name: "sentinel_inbox.json"
+  # 「重启流程注入上下文」时最多带几条留言
+  max_inbox_messages: 3
+
+# ---------- 雷达（发现你已经在跑的 AI CLI 会话） ----------
+# 哨兵不要求「必须从我这儿启动 Agent」——
+# 它去扫各个 Agent 的会话日志目录，把正在被写入的那些**发现**出来。
+radar:
+  # 要扫哪些目录。一行一个路径。
+  #
+  # ⚠️ 相对路径按**家目录**解析（``.codex`` = ``C:\Users\你\.codex``）；
+  #    绝对路径原样使用（比如 ``D:\项目``）。
+  #
+  # ⚠️ 留空 = 用代码内置的默认清单（下面五项）。
+  #
+  # ⚠️ **顺序就是优先级**（v3.0.2）
+  #    ---------------------------
+  #    排在前面的根优先展示。``.codex`` 排**最后** ——
+  #    它的目录里绝大多数是早就跑完的历史记录，
+  #    排前面会把真正在跑的会话全挤掉。
+  #
+  # ⚠️ 目录层级太深会**扫不到** —— 雷达最多下探 5 层，
+  #    所以要指向**会话目录本身**，别指向它的上级。
+  scan_roots:
+    - ".minimax/v2/sessions"     # MiniMax Code 真正落日志的地方
+    - ".dsh/sessions"             # DeepSeek harness 的会话目录
+    - ".mcode"                   # MiniMax Code（社区习惯叫法）
+    - ".claude"                  # Claude Code
+    - ".codex"                   # Codex —— 排最后（全是历史死文件）
+
+  # 路径里命中这些词的日志，**一律不显示**（v3.4.0）。
+  #
+  # 为什么需要它：哨兵自己压测留下的残留日志会占满列表，
+  # 把**真正在跑**的那个任务挤掉 —— 用户看到的是一堆噪音，
+  # 却漏掉了该看的那个。
+  #
+  # ⚠️ 匹配方式是**子串**匹配（不区分大小写）：
+  #    所以 `test` 也会命中 `contest` 这类目录。
+  #    真被误伤了就把那一条从这里删掉。
+  #
+  # ⚠️ 留一个**空列表** = 什么都不排除（与「不写这一项」不同）。
+  exclude_keywords:
+    - "sentinel"
+    - "stress"
+    - "test"
+
+  # 自定义进程特征（v3.4.0）。
+  #
+  # 内置只认得 mcode / codex / claude 三家。
+  # 你自己写的 Agent（改了包名的 fork 之类）写在这儿，
+  # 命令行或工作目录里命中它的进程，雷达也会提示出来。
+  #
+  # 例：`my-cli` —— 命中 `D:\项目\my-cli` 这样的工作目录。
+  custom_process_features: []
+
+# ---------- 日志 ----------
+logging:
+  level: "INFO"
+  dir: "logs"
+  # 截获的原始 JSONL 是否落盘（落盘内容已脱敏）
+  persist_raw_stream: true
+  retention_days: 7

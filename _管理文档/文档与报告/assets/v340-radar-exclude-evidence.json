@@ -1,0 +1,37 @@
+{
+  "port": 8143,
+  "scan_root": "D:\\项目\\<项目目录>\\logs\\v340-demo\\fakehome\\.codex",
+  "before": {
+    "config": "radar:\n  scan_roots:\n    - \"D:/项目/<项目目录>/logs/v340-demo/fakehome/.codex\"\n  exclude_keywords:\n    []\n  custom_process_features:\n    - neko\n",
+    "exclude_keywords": [],
+    "count": 3,
+    "paths": [
+      "D:\\项目\\<项目目录>\\logs\\v340-demo\\fakehome\\.codex\\sessions\\normal-project\\rollout-3.jsonl",
+      "D:\\项目\\<项目目录>\\logs\\v340-demo\\fakehome\\.codex\\sessions\\sentinel-stress\\rollout-1.jsonl",
+      "D:\\项目\\<项目目录>\\logs\\v340-demo\\fakehome\\.codex\\sessions\\test-run\\rollout-2.jsonl"
+    ]
+  },
+  "after": {
+    "config": "radar:\n  scan_roots:\n    - \"D:/项目/<项目目录>/logs/v340-demo/fakehome/.codex\"\n  exclude_keywords:\n    - sentinel\n    - stress\n    - test\n  custom_process_features:\n    - neko\n",
+    "exclude_keywords": [
+      "sentinel",
+      "stress",
+      "test"
+    ],
+    "count": 1,
+    "paths": [
+      "D:\\项目\\<项目目录>\\logs\\v340-demo\\fakehome\\.codex\\sessions\\normal-project\\rollout-3.jsonl"
+    ]
+  },
+  "custom_features": {
+    "configured": [
+      "neko"
+    ],
+    "neko_processes": [
+      {
+        "pid": 25892,
+        "cwd": "D:\\项目\\N.E.K.O"
+      }
+    ]
+  }
+}

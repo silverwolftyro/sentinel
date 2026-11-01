@@ -1,0 +1,84 @@
+{
+  "version": "v3.0.1",
+  "date": "2026-10-30",
+  "regression": {
+    "total": 1178,
+    "failed": 0,
+    "command": "python -m pytest -p no:warnings",
+    "ruff": "零告警",
+    "doc_links": "145 条相对链接，0 坏链"
+  },
+  "demo_exit": {
+    "packaged_exe": true,
+    "endpoint": "POST /api/demo/exit",
+    "ok": true,
+    "stopped": true,
+    "pids_before": [26512, 8000],
+    "pids_after": [],
+    "note": "PyInstaller 单文件模式会再起子进程，两个 PID 都退出了"
+  },
+  "packaged_exe": {
+    "path": "_构建与发布/dist/sentinel.exe",
+    "bytes": 16755935,
+    "size": "16.0 MB",
+    "build_seconds": 71.4,
+    "self_check_first_line": "哨兵 Sentinel v3.0.1 —— AI CLI Agent 的只读审计监控",
+    "discover_ok": true,
+    "discover_count": 50
+  },
+  "radar": {
+    "roots": [
+      "C:\\Users\\alpha\\.codex",
+      "C:\\Users\\alpha\\.mcode",
+      "C:\\Users\\alpha\\.claude",
+      "C:\\Users\\alpha\\.minimax\\v2\\sessions"
+    ],
+    "samples": [
+      {
+        "agent": "codex",
+        "workspace": "C:\\Users\\alpha\\AppData\\Local\\Temp\\sentinel-stress-gfefsei9\\work-2",
+        "workspace_source": "cwd",
+        "session_id": "01a17c8d-25f7-76a1-823e-dd93c1b8fdf5",
+        "first_time": 1793090987.571
+      },
+      {
+        "agent": "mcode",
+        "workspace": "14-31-44-748-session_bXZzX2JiMjI5MDg5ZDZiMDQzNWI4NjQ0ZGNlZGM4YzI1NGI2\\messages.jsonl",
+        "workspace_source": "file",
+        "session_id": "bXZzX2JiMjI5MDg5ZDZiMDQzNWI4NjQ0ZGNlZGM4YzI1NGI2",
+        "first_time": 1793161377.293
+      }
+    ],
+    "note": "没有一条是「未知工作区」"
+  },
+  "settings_layout": {
+    "pc": {
+      "viewport": "1440x900",
+      "nav_width": 240,
+      "content_width": 1146,
+      "content_x": 276,
+      "panel_body_overflow_y": "visible",
+      "panel_body_flex": "0 0 auto",
+      "doc_scroll_width": 1440,
+      "viewport_width": 1440,
+      "sections": 4
+    },
+    "mobile": {
+      "viewport": "390x844",
+      "nav_display": "flex",
+      "nav_scroll_width": 489,
+      "nav_client_width": 340,
+      "doc_scroll_width": 390,
+      "viewport_width": 390
+    }
+  },
+  "shots": {
+    "radar_workspace": "assets/radar-v3.0.1-workspace.png",
+    "radar_active_only": "assets/radar-v3.0.1-active-only.png",
+    "settings_split": "assets/settings-v3.0.1-split.png",
+    "settings_radar_roots": "assets/settings-v3.0.1-radar-roots.png",
+    "settings_mobile": "assets/settings-v3.0.1-mobile.png",
+    "dashboard_demo_exit": "assets/dashboard-v3.0.1-demo-exit.png"
+  },
+  "errors": []
+}

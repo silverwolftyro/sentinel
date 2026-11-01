@@ -1,0 +1,295 @@
+{
+  "version": "v3.6.0",
+  "port": 8153,
+  "demo_log": "mcode.jsonl",
+  "radar_root": "D:\\项目\\<项目目录>\\logs\\v360-demo\\radar-root",
+  "expected_user_goal": "请帮我把 auth.py 的登录逻辑重构一遍，并补上单元测试。",
+  "expected_agent_reply": "已经改好了：login() 拆成两个纯函数，12 个单测全过。",
+  "missing_path": "D:\\项目\\<项目目录>\\logs\\v360-demo\\never-created.jsonl",
+  "render_scale": {
+    "shots": {
+      "0": {
+        "label": "纯代码",
+        "screenshot": "v360-log-scale-0.png",
+        "chars": 672
+      },
+      "50": {
+        "label": "自然语言",
+        "screenshot": "v360-log-scale-50.png",
+        "chars": 182
+      },
+      "100": {
+        "label": "高度摘要",
+        "screenshot": "v360-log-scale-100.png",
+        "chars": 149
+      }
+    },
+    "code_mode_shows_raw_json": true,
+    "code_mode_shows_arguments": true,
+    "code_mode_shows_noise_tag": true,
+    "code_mode_no_emoji": true,
+    "natural_mode_has_user_tag": true,
+    "natural_mode_has_reply_tag": true,
+    "natural_mode_has_think_tag": true,
+    "natural_mode_has_tool_tag": true,
+    "natural_mode_hides_arguments": true,
+    "natural_mode_hides_tool_result": true,
+    "natural_mode_strips_noise": true,
+    "natural_mode_keeps_question": true,
+    "summary_mode_has_user_tag": true,
+    "summary_mode_has_reply_tag": true,
+    "summary_mode_has_tool_tag": true,
+    "summary_mode_drops_thinking": true,
+    "summary_mode_drops_tool_result": true,
+    "round_trip_label": "纯代码",
+    "round_trip_identical": true
+  },
+  "split_panes": {
+    "before": {
+      "body_class": "body",
+      "sessions_w_var": "248px",
+      "stream_w_var": "469.1875px",
+      "audit_h_var": "200px",
+      "alert_panel_rect": {
+        "left": 302,
+        "top": 210,
+        "width": 775,
+        "height": 742,
+        "right": 1077,
+        "bottom": 952
+      },
+      "sessions_rect": {
+        "left": 18,
+        "top": 210,
+        "width": 248,
+        "height": 742,
+        "right": 266,
+        "bottom": 952
+      },
+      "stream_rect": {
+        "left": 1113,
+        "top": 210,
+        "width": 469,
+        "height": 742,
+        "right": 1582,
+        "bottom": 952
+      },
+      "audit_rect": {
+        "left": 303,
+        "top": 751,
+        "width": 773,
+        "height": 200,
+        "right": 1076,
+        "bottom": 951
+      },
+      "rail_hidden": true,
+      "rail_count": "1",
+      "resizers_visible": {
+        "resizer-sessions": "block",
+        "resizer-audit": "block",
+        "resizer-stream": "block"
+      }
+    },
+    "after_sessions": {
+      "body_class": "body",
+      "sessions_w_var": "368px",
+      "stream_w_var": "469.1875px",
+      "audit_h_var": "200px",
+      "alert_panel_rect": {
+        "left": 422,
+        "top": 210,
+        "width": 655,
+        "height": 742,
+        "right": 1077,
+        "bottom": 952
+      },
+      "sessions_rect": {
+        "left": 18,
+        "top": 210,
+        "width": 368,
+        "height": 742,
+        "right": 386,
+        "bottom": 952
+      },
+      "stream_rect": {
+        "left": 1113,
+        "top": 210,
+        "width": 469,
+        "height": 742,
+        "right": 1582,
+        "bottom": 952
+      },
+      "audit_rect": {
+        "left": 423,
+        "top": 751,
+        "width": 653,
+        "height": 200,
+        "right": 1076,
+        "bottom": 951
+      },
+      "rail_hidden": true,
+      "rail_count": "1",
+      "resizers_visible": {
+        "resizer-sessions": "block",
+        "resizer-audit": "block",
+        "resizer-stream": "block"
+      }
+    },
+    "after_stream": {
+      "body_class": "body",
+      "sessions_w_var": "368px",
+      "stream_w_var": "609.1875px",
+      "audit_h_var": "200px",
+      "alert_panel_rect": {
+        "left": 422,
+        "top": 210,
+        "width": 515,
+        "height": 742,
+        "right": 937,
+        "bottom": 952
+      },
+      "sessions_rect": {
+        "left": 18,
+        "top": 210,
+        "width": 368,
+        "height": 742,
+        "right": 386,
+        "bottom": 952
+      },
+      "stream_rect": {
+        "left": 973,
+        "top": 210,
+        "width": 609,
+        "height": 742,
+        "right": 1582,
+        "bottom": 952
+      },
+      "audit_rect": {
+        "left": 423,
+        "top": 751,
+        "width": 513,
+        "height": 200,
+        "right": 936,
+        "bottom": 951
+      },
+      "rail_hidden": true,
+      "rail_count": "1",
+      "resizers_visible": {
+        "resizer-sessions": "block",
+        "resizer-audit": "block",
+        "resizer-stream": "block"
+      }
+    },
+    "after_audit": {
+      "body_class": "body",
+      "sessions_w_var": "368px",
+      "stream_w_var": "609.1875px",
+      "audit_h_var": "290px",
+      "alert_panel_rect": {
+        "left": 422,
+        "top": 210,
+        "width": 515,
+        "height": 742,
+        "right": 937,
+        "bottom": 952
+      },
+      "sessions_rect": {
+        "left": 18,
+        "top": 210,
+        "width": 368,
+        "height": 742,
+        "right": 386,
+        "bottom": 952
+      },
+      "stream_rect": {
+        "left": 973,
+        "top": 210,
+        "width": 609,
+        "height": 742,
+        "right": 1582,
+        "bottom": 952
+      },
+      "audit_rect": {
+        "left": 423,
+        "top": 661,
+        "width": 513,
+        "height": 290,
+        "right": 936,
+        "bottom": 951
+      },
+      "rail_hidden": true,
+      "rail_count": "1",
+      "resizers_visible": {
+        "resizer-sessions": "block",
+        "resizer-audit": "block",
+        "resizer-stream": "block"
+      }
+    },
+    "sessions_widened": true,
+    "stream_widened": true,
+    "audit_taller": true,
+    "screenshot": "v360-split-panes.png",
+    "collapse": {
+      "clicked": "clicked",
+      "collapsed_width": 46,
+      "rail_visible": true,
+      "rail_session_count": "1",
+      "narrow_strip": true,
+      "expanded_width": 368,
+      "expanded_ok": true,
+      "alert_width": 837,
+      "stream_width": 609,
+      "alert_panel_intact": true,
+      "stream_panel_intact": true,
+      "screenshot": "v360-sessions-collapsed.png"
+    },
+    "persisted": {
+      "sessions_width": 368,
+      "stream_width": 609,
+      "sessions_kept": true,
+      "stream_kept": true
+    }
+  },
+  "flow_highlight": {
+    "flow": {
+      "total": 7,
+      "users": 2,
+      "replies": 1,
+      "plain": 4,
+      "sample_user": "[22:16:10]🧑 用户提问：请帮我把 auth.py 的登录逻辑重构一遍，并补上单元测试。",
+      "sample_reply": "[22:16:10]🤖 Agent 回答：已经改好了：login() 拆成两个纯函数，12 个单测全过。",
+      "user_style": {
+        "border_left": "3px solid rgb(79, 140, 255)",
+        "background": "rgba(79, 140, 255, 0.1)"
+      },
+      "reply_style": {
+        "border_left": "3px solid rgb(53, 214, 243)",
+        "background": "rgba(53, 214, 243, 0.09)"
+      }
+    },
+    "has_user_bubble": true,
+    "has_reply_bubble": true,
+    "user_text_has_question": true,
+    "reply_text_has_answer": true,
+    "user_has_border": true,
+    "screenshot": "v360-flow-highlight.png"
+  },
+  "path_guard": {
+    "empty_state_command": "mcode exec \"你的指令\" > logs/capture.jsonl",
+    "empty_state_target": "logs/capture.jsonl",
+    "empty_state_note": "请先运行该命令，生成文件后再点击接入。",
+    "empty_state_uses_relative_path": true,
+    "empty_state_says_generate_first": true,
+    "empty_state_screenshot": "v360-radar-empty.png",
+    "missing_path": "D:\\项目\\<项目目录>\\logs\\v360-demo\\never-created.jsonl",
+    "error_text": "文件不存在，请检查路径或重新生成",
+    "error_matches": true,
+    "error_color": "rgb(255, 93, 115)",
+    "sessions_before": 1,
+    "sessions_after": 1,
+    "nothing_attached": true,
+    "backend_exists_flag": false,
+    "backend_agrees_missing": true,
+    "screenshot": "v360-attach-blocked.png"
+  }
+}

@@ -1,0 +1,64 @@
+哨兵 Sentinel —— NOTICE（第三方致谢与出处声明）
+================================================
+
+本项目在构建多 Agent 配置与进程派发机制时，参考并使用了
+`addsas222/n.e.k.o_plugin_agent_bridge` 的部分数据结构与实现思路。
+该项目采用 MIT 开源协议，
+GitHub 地址：https://github.com/addsas222/n.e.k.o_plugin_agent_bridge
+
+
+具体复用了什么
+==============
+
+1. **Agent 配置的数据模型** —— 上游 ``bridge/registry.py`` 的
+   ``AgentSpec``（可执行名、启动形态 ``mode``、参数模板、鉴权失败措辞、
+   运行期失败措辞、别名、登录与安装指引）。
+   本项目把 14 条 Agent 的配置转成 ``src/agents/cloud_agents.json``，
+   并在 ``src/agents/__init__.py`` 里实现等价的 ``AgentProfile``。
+
+2. **数据化注册协议** —— 上游 ``bridge/provider_manifest.py`` 的
+   「清单即注册表」思路（schema 版本号、逐字段校验、
+   坏清单降级为告警而不是拖垮整体、未知字段向后兼容）。
+
+3. **子进程派发的避坑经验** —— 上游 ``bridge/runner.py`` 在实机验证后
+   总结的四条：
+
+   * stdin 必须 DEVNULL（否则子进程与宿主抢同一个管道）；
+   * 超时必须连**进程树**一起清（Windows 走 ``taskkill /F /T``），
+     否则留下孤儿进程占着端口；
+   * 输出管道必须**持续读取**但缓冲**限幅**（没人读管道，
+     子进程会永久阻塞）；
+   * **不靠退出码**判成败（未登录时退出码往往是 0）。
+
+4. **鉴权失败的两层识别** —— 上游的「全局兜底正则表 + 每 Agent 专属措辞」
+   结构。
+
+   ⚠️ 其中**鉴权措辞表本身**（``src/agents/auth.py`` 的
+   ``GLOBAL_AUTH_PATTERNS``，8 条正则）是**从上游
+   ``bridge/runner.py`` 的 ``_AUTH_PATTERNS`` 逐条移植**的 ——
+   属于**代码**，不只是思路。上游采用 MIT 协议，
+   MIT 要求「版权声明与许可声明随软件副本一同提供」，
+   故本文件即为该声明的载体。
+   移植来源在该文件的模块 docstring 里也有明确标注。
+
+5. **上游插件的公开接口形态**（``python -m webui.server`` 的宿主进程特征、
+   14 个 Agent 的可执行名与别名）——
+   本项目据此实现**只读**的进程树雷达，不修改上游任何一行代码。
+   本仓库**不包含**上游项目的源码副本。
+
+
+许可与合规
+==========
+
+* 上游 ``addsas222/n.e.k.o_plugin_agent_bridge`` 以 **MIT** 协议发布
+  （上游 README 的「许可」一节写明：见其所属 **N.E.K.O 项目**仓库根的
+  ``LICENSE`` 文件）。
+  本项目对它的使用限于**参考数据结构**与**移植少量已标注的代码**，
+  并在 ``NOTICE`` 中保留出处、仓库地址与逐项清单。
+* 上游项目的仓库地址与许可证文本：
+  https://github.com/addsas222/n.e.k.o_plugin_agent_bridge
+  https://github.com/addsas222/n.e.k.o_plugin_agent_bridge/blob/main/LICENSE
+* 本项目自身的许可证是 **GPL-3.0**，见仓库根 ``LICENSE`` 文件
+  （与上游许可证无关 —— 引用上游不等于本项目采用同一许可证）。
+* MIT 与 GPL-3.0 兼容：MIT 允许再分发与再许可，
+  因此把 MIT 代码并入 GPL-3.0 项目在许可证上是允许的。

@@ -1,0 +1,43 @@
+{
+  "first_instance": {
+    "mutex_held": true,
+    "process_count": 2,
+    "pids": [
+      5080,
+      42856
+    ]
+  },
+  "second_instance": {
+    "process_count": 2,
+    "pids": [
+      5080,
+      42856
+    ],
+    "process_growth": 0
+  },
+  "second_exit_code": 3,
+  "screenshot_terminal": {
+    "path": "D:\\项目\\<项目目录>\\_管理文档\\文档与报告\\assets\\v380-single-instance-terminal.png",
+    "ok": true,
+    "region": [
+      0,
+      72,
+      1212,
+      568
+    ],
+    "window_handle": 15667242
+  },
+  "screenshot_screen": {
+    "path": "D:\\项目\\<项目目录>\\_管理文档\\文档与报告\\assets\\v380-single-instance-screen.png",
+    "ok": true
+  },
+  "job_object": {
+    "enabled": true,
+    "child_pid": 14808,
+    "child_alive_after_parent_exit": false
+  },
+  "after_kill": {
+    "killed": 2,
+    "left": 0
+  }
+}

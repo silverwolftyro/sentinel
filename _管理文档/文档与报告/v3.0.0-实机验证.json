@@ -1,0 +1,38 @@
+{
+  "version": "v3.0.0",
+  "port": 8020,
+  "auto_goal": "重构 auth 模块，把登录鉴权改成 JWT，并补上单元测试",
+  "attach": {
+    "label": "[Codex] D:\\work\\project_alpha",
+    "expected_pid": 38484,
+    "goal": "重构 auth 模块，把登录鉴权改成 JWT，并补上单元测试",
+    "goal_source": "auto",
+    "goal_source_label": "自动提取",
+    "auto_anchored": true,
+    "pid": 38484,
+    "process_bound": true,
+    "arm_available": true,
+    "armed": false,
+    "strategy": "cmdline_path",
+    "confidence": 0.95,
+    "message": "已挂载 [Codex] D:\\work\\project_alpha（PID 38484）"
+  },
+  "shots": {
+    "desktop_auto_anchor": true,
+    "mobile_dashboard": true,
+    "mobile_arm_suggest": true,
+    "mobile_settings": true
+  },
+  "errors": [],
+  "agents": [
+    {
+      "pid": 38484,
+      "cwd": "D:\\work\\project_alpha",
+      "path": "C:\\Users\\alpha\\AppData\\Local\\Temp\\sentinel-v300-4q5swy9d\\.codex\\sessions\\rollout-v300.jsonl"
+    }
+  ],
+  "width_probe": {
+    "dashboard": "EVAL: {\"vw\":390,\"scrollW\":390,\"wide\":[]}\n已保存： C:\\Users\\alpha\\AppData\\Local\\Temp\\sentinel-v300-4q5swy9d\\probe-dashboard.png",
+    "settings": "EVAL: {\"vw\":390,\"scrollW\":390,\"wide\":[]}\n已保存： C:\\Users\\alpha\\AppData\\Local\\Temp\\sentinel-v300-4q5swy9d\\probe-settings.png"
+  }
+}

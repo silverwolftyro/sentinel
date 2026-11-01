@@ -1,0 +1,79 @@
+{
+  "_说明": "哨兵 v1.0.0 远程告警（Webhook）实发报文样例。三种格式 + 手机上看到的卡片正文。",
+  "_来源": "python _构建与发布/scripts/fire_drill.py --agent codex（2026-10-27，Mock Server 实收）",
+  "_告警上下文": {
+    "agent": "codex",
+    "rule_id": "catastrophic_root_delete",
+    "severity": "red_line",
+    "task_goal": "在当前目录创建 hello.py 并运行它",
+    "command": "rm -rf /tmp/test",
+    "triggers": ["guardian_intercept"]
+  },
+  "dingtalk": {
+    "msgtype": "markdown",
+    "markdown": {
+      "title": "🚨 哨兵拦截 · codex · catastrophic_root_delete",
+      "text": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行"
+    }
+  },
+  "feishu": {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "🚨 哨兵拦截 · codex · catastrophic_root_delete"
+        },
+        "template": "red"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "lark_md",
+            "content": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行"
+          }
+        }
+      ]
+    }
+  },
+  "serverchan": {
+    "title": "🚨 哨兵拦截 · codex · catastrophic_root_delete",
+    "desp": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行"
+  },
+  "bark": {
+    "title": "🚨 哨兵拦截 · codex · catastrophic_root_delete",
+    "body": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行",
+    "level": "timeSensitive"
+  },
+  "generic": {
+    "text": "[CRITICAL] DANGEROUS: 红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n规则：catastrophic_root_delete\n工具：-\n命令：rm -rf /tmp/test\n人话解释：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。",
+    "card": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行",
+    "title": "🚨 哨兵拦截 · codex · catastrophic_root_delete",
+    "agent": "codex",
+    "rule_id": "catastrophic_root_delete",
+    "task_goal": "在当前目录创建 hello.py 并运行它",
+    "command": "rm -rf /tmp/test",
+    "triggers": ["guardian_intercept"],
+    "alert": {
+      "alert_id": "1793070000123-000001",
+      "timestamp": 1793070000.123,
+      "verdict": "DANGEROUS",
+      "level": "critical",
+      "rule_id": "catastrophic_root_delete",
+      "reason": "红线级命中：递归删除根目录 / 家目录 / 整盘（/）",
+      "severity": "red_line",
+      "agent": "codex",
+      "task_goal": "在当前目录创建 hello.py 并运行它",
+      "command": "rm -rf /tmp/test",
+      "triggers": ["guardian_intercept"],
+      "explanation": "AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。",
+      "guardian": {
+        "ok": true,
+        "method": "suspend",
+        "pid": 25328
+      }
+    }
+  },
+  "手机卡片正文": "## 🚨 哨兵告警 · RED_LINE\n\n- **Agent**：codex\n- **触发规则**：`catastrophic_root_delete`\n- **触发类型**：guardian_intercept\n- **任务目标**：在当前目录创建 hello.py 并运行它\n- **当前操作**：`rm -rf /tmp/test`\n- **时间**：2026-10-27 11:00:00\n\n**规则原因**：红线级命中：递归删除根目录 / 家目录 / 整盘（/）\n\n**人话解释**：AI 想清空整个 /tmp 目录。原因：用户说清理临时文件，但它用了 rm -rf。影响：/tmp 下所有内容会被删除。后果：不可逆。\n\n**守护者**：已挂起目标进程（PID 25328）—— 等待你在看板上放行"
+}

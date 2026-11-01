@@ -1,0 +1,40 @@
+# 哨兵 Sentinel —— 基础依赖
+# 安装：pip install -r requirements.txt
+
+# HTTP 客户端（告警通道 webhook / 外部服务调用）
+requests>=2.31.0
+
+# YAML 配置文件解析
+pyyaml>=6.0.1
+
+# 文件系统事件监听（监控日志目录变更）
+watchdog>=4.0.0
+
+# --- 本地监控面板（src/gui/server.py） ---
+# Web 框架：只提供 /api/state、/api/events（SSE）等只读接口
+fastapi>=0.110.0
+
+# ASGI 服务器：默认绑定 127.0.0.1:8000
+uvicorn>=0.27.0
+
+# 模板引擎：渲染面板页面
+jinja2>=3.1.0
+
+# 测试客户端依赖（fastapi.testclient 需要）
+httpx>=0.27.0
+
+# --- 守护者模式（src/core/guardian.py） ---
+# 进程挂起 / 恢复（psutil.Process.suspend / resume）。
+#
+# 这是**可选依赖**：没装 psutil 时守护者会自动降级成「只报告、不动手」，
+# 哨兵的其它功能完全不受影响。
+psutil>=5.9.0
+
+# --- Windows 系统托盘（src/gui/tray.py，v3.4.0） ---
+# 托盘图标 + 自绘图标（Pillow 画「哨」字，不带 .ico 资源文件）。
+#
+# 这也是**可选依赖**：没装就**不出托盘图标**，
+# 哨兵的其它功能（看板、雷达、告警）一点不受影响。
+# ⚠️ 托盘线程是**守护线程** —— 不会变成新的「后台幽灵」。
+pystray>=0.19.0
+pillow>=10.0.0

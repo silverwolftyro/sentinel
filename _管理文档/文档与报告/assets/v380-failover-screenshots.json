@@ -1,0 +1,41 @@
+[
+  {
+    "segment": "a",
+    "exit_code": 0,
+    "window_handle": 2556718,
+    "region": [
+      0,
+      0,
+      1707,
+      1067
+    ],
+    "screenshot": "D:\\项目\\<项目目录>\\_管理文档\\文档与报告\\assets\\v380-failover-terminal-a.png",
+    "screenshot_ok": true
+  },
+  {
+    "segment": "b",
+    "exit_code": 0,
+    "window_handle": 2622254,
+    "region": [
+      0,
+      0,
+      1707,
+      1067
+    ],
+    "screenshot": "D:\\项目\\<项目目录>\\_管理文档\\文档与报告\\assets\\v380-failover-terminal-b.png",
+    "screenshot_ok": true
+  },
+  {
+    "segment": "c",
+    "exit_code": 0,
+    "window_handle": 2687790,
+    "region": [
+      0,
+      0,
+      1707,
+      1067
+    ],
+    "screenshot": "D:\\项目\\<项目目录>\\_管理文档\\文档与报告\\assets\\v380-failover-terminal-c.png",
+    "screenshot_ok": true
+  }
+]
