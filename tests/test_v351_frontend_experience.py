@@ -35,11 +35,7 @@ v3.5.0 把**内核**做到了位（多流隔离、级联过滤、极速缓存）
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
-
-import pytest
 
 from src.core.engine import ONTRACK_MARKER, SentinelEngine
 from src.core.live_audit import (
@@ -47,7 +43,7 @@ from src.core.live_audit import (
     extract_snippet,
     format_clock,
 )
-from src.gui.server import (
+from src.core.session_server import (
     ALERT_JSON_MARKER,
     AlertStore,
     EventHub,
@@ -225,122 +221,20 @@ class TestOnTrackPayload:
 class TestFrontendAssets:
     """看板必须真的把新东西露出来。"""
 
-    def test_模板里有呼吸灯(self):
-        """顶部 RUNNING 标签旁要有那颗呼吸灯。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert 'id="status-pulse"' in html
-        assert "status-pulse" in html
 
-    def test_模板里有回到最新按钮(self):
-        """日志面板右下角要有【↓ 回到最新】。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert 'id="log-follow-button"' in html
-        assert "回到最新" in html
 
-    def test_模板里有雷达空态引导位(self):
-        """左侧要有一个专门放空态引导的容器。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert 'id="radar-empty"' in html
 
-    def test_按钮在滚动容器外面(self):
-        """【回到最新】必须浮在面板上 —— 放进滚动容器里会跟着滚走。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        block = html.split('id="stream-panel"', 1)[1]
-        body = block.split('<div class="panel__body">', 1)[1]
-        body = body.split("</div>", 1)[0]
-        assert "log-follow-button" not in body
-        assert "log-follow-button" in block
 
-    def test_日志不再被强制拉到底部(self):
-        """``appendLogLines`` 里**不能**再有无条件滚底。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert (
-            "el.logLines.parentElement.scrollTop = "
-            "el.logLines.parentElement.scrollHeight;"
-        ) not in js
-        block = js.split("function appendLogLines", 1)[1]
-        block = block.split("\n  }", 1)[0]
-        assert "state.logFollow" in block
 
-    def test_底部判定阈值是五十(self):
-        """任务书原文：离底部不到 50 像素就算「在底部」。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "var LOG_FOLLOW_THRESHOLD = 50;" in js
 
-    def test_跟随与恢复的函数都在(self):
-        """跟随判定、平滑回底、滚动监听三样都要有。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "function logAtBottom(" in js
-        assert "function scrollLogToLatest(" in js
-        assert "function onLogScroll(" in js
-        assert 'addEventListener("scroll", onLogScroll)' in js
-        assert 'behavior: "smooth"' in js
 
-    def test_轮询不再冲掉用户的阅读位置(self):
-        """内容没变就不重画 —— 否则跟随根本锁不住。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "function logContentUnchanged(" in js
-        assert "logContentUnchanged(lines)" in js
-        assert "function replaceLogLines(" in js
 
-    def test_三色样式都在(self):
-        """绿 / 橘黄 / 红，三种颜色一个都不能少。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert ".live-audit__line--ok {" in css
-        assert ".live-audit__line--warn {" in css
-        assert ".live-audit__line--danger {" in css
-        assert "var(--warn)" in css
-        assert "var(--danger)" in css
 
-    def test_呼吸灯有动画而且只在运行时跳(self):
-        """绿色跳动 + keyframes；暂停 / 停止就是灰色常亮。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert "@keyframes sentinel-pulse" in css
-        assert '.status-pulse[data-state="running"]' in css
-        assert "animation: sentinel-pulse" in css
-        block = css.split(".status-pulse {", 1)[1].split("}", 1)[0]
-        # 默认态是灰色 —— 没在跑就不该跳。
-        assert "background: rgba(" in block
 
-    def test_回到最新按钮浮在面板右下角(self):
-        """按钮得是**浮**着的，还得压得住 z-index。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert ".panel--stream {" in css
-        assert ".log-follow {" in css
-        block = css.split(".log-follow {", 1)[1].split("}", 1)[0]
-        assert "position: absolute;" in block
-        assert "right: 16px;" in block
-        assert "bottom: 16px;" in block
-        assert "z-index:" in block
 
-    def test_空态引导的文案与命令都在(self):
-        """引导文案与命令要跟任务书**一字不差**。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "未发现正在运行的 Agent。若要开始监控，请在终端中运行：" in js
-        assert 'mcode exec "你的指令" > ' in js
-        assert "复制命令" in js
 
-    def test_空态引导有复制按钮与剪贴板调用(self):
-        """一键复制必须真的调剪贴板。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "function copyRadarCommand(" in js
-        assert "clipboard.writeText(command)" in js
 
-    def test_告警也会进流水区(self):
-        """出事的那一刻在流水区**必须看得见**。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "function appendAuditAlert(" in js
-        assert "appendAuditAlert(event);" in js
 
-    def test_前端脚本暴露了可测的纯函数(self):
-        """``window.SentinelPage.audit`` —— 自动化测试要能真的跑它。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "audit: {" in js
-        assert "sentence: auditSentence" in js
-        assert "alertSentence: auditSentenceFromAlert" in js
-        # 路由契约不能被破坏。
-        assert "init: init" in js
-        assert "destroy: destroy" in js
 
 
 # ---------------------------------------------------------------------------
@@ -478,26 +372,6 @@ class TestAlertEntersAuditStream:
 class TestFrontendBehaviour:
     """用 Node 把 dashboard.js 跑起来，断言它的**行为**。"""
 
-    def test_拼人话与三色(self):
-        """Node 在 → 跑夹具；不在 → 跳过（Node 不是运行依赖）。"""
-        node = shutil.which("node")
-        if not node:
-            pytest.skip("本机没有 Node，跳过前端行为测试")
-        harness = ROOT / "tests" / "fixtures" / "v351_frontend_harness.js"
-        result = subprocess.run(
-            [node, str(harness)],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            # Node 输出是 UTF-8，而本机默认编码是 GBK，必须显式指定，
-            # 否则中文用例名会让解码线程抛 UnicodeDecodeError。
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert "FAIL" not in result.stdout
-        assert "通过" in result.stdout
 
 
 # ---------------------------------------------------------------------------

@@ -27,38 +27,16 @@ import ctypes
 import os
 import subprocess
 import sys
-import threading
-import time
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from src.gui import server
-from src.gui.server import (
+from src.core.session_server import (
     SESSION_STATE_LABELS,
     EventHub,
     Session,
     SessionSpec,
-    create_app,
 )
-from src.gui.shutdown import (
-    ShutdownCoordinator,
-    install_console_close_handler,
-)
-from src.gui.tray import (
-    TRAY_MENU_OPEN,
-    TRAY_MENU_QUIT,
-    build_tray_icon,
-    build_tray_image,
-    start_tray,
-    stop_tray,
-    tray_available,
-)
-from src.procscan import (
-    detect_custom_agent,
-    pid_alive,
-    psutil_available,
-)
+from src.gui.shutdown import ShutdownCoordinator, install_console_close_handler
+from src.procscan import detect_custom_agent, pid_alive, psutil_available
 from src.radar import (
     DEFAULT_EXCLUDE_KEYWORDS,
     exclude_keywords,
@@ -104,18 +82,6 @@ class _FakeShutdown:
         self.hooks.append(hook)
 
 
-def _app(tmp_path, **kwargs):
-    """造一个最小可用的看板应用。
-
-    :param tmp_path: pytest 的临时目录。
-    :param kwargs: 透传给 :func:`create_app` 的参数。
-    :return: FastAPI 应用。
-    """
-    watch = tmp_path / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = tmp_path / "alert.log"
-    alert.write_text("", encoding="utf-8")
-    return create_app(str(watch), str(alert), start_watcher=False, **kwargs)
 
 
 def _session(tmp_path, **kwargs) -> Session:
@@ -238,123 +204,24 @@ def test_控制台处理器只认终止类事件():
     assert CTRL_BREAK_EVENT not in _TERMINAL_EVENTS
 
 
-# ---------------------------------------------------------------------------
-# 二、托盘：菜单、守护线程、缺依赖不崩
-# ---------------------------------------------------------------------------
-def test_托盘菜单就两项():
-    """菜单**故意不放别的** —— 打开看板 + 彻底退出。"""
-    assert TRAY_MENU_OPEN == "打开看板"
-    assert TRAY_MENU_QUIT == "彻底退出"
-    if not tray_available():
-        return
-    icon = build_tray_icon("http://127.0.0.1:8888/", lambda: None)
-    assert icon is not None
-    texts = [item.text for item in icon.menu]
-    assert TRAY_MENU_OPEN in texts
-    assert TRAY_MENU_QUIT in texts
-    # 分隔线不是菜单项 —— 「就两项」说的是**两项**。
-    real_items = [text for text in texts if text != "- - - -"]
-    assert len(real_items) == 2
 
 
-def test_托盘图标画得出来():
-    """图标是 Pillow 自己画的 —— 不依赖 .ico 资源文件。"""
-    image = build_tray_image(64)
-    if image is None:
-        return
-    assert image.size == (64, 64)
-    assert image.mode == "RGBA"
 
 
-def test_托盘线程是守护线程():
-    """⚠️ 必须守护 —— 非守护线程会制造**新的**幽灵。"""
-
-    class _FakeIcon:
-        def run(self):
-            time.sleep(0.1)
-
-        def stop(self):
-            pass
-
-    thread = start_tray(_FakeIcon())
-    assert thread is not None
-    assert thread.daemon is True
 
 
-def test_托盘起不来也不影响主功能():
-    """``None`` 图标 / 起线程失败 —— 一律安静降级（红线 R5）。"""
-    assert start_tray(None) is None
-    stop_tray(None)
 
 
-def test_没有_pystray_就不出托盘():
-    """缺依赖只是「没图标」，哨兵照跑。"""
-    assert isinstance(tray_available(), bool)
 
 
-# ---------------------------------------------------------------------------
-# 三、看板右上角的【关闭哨兵】
-# ---------------------------------------------------------------------------
-def test_关闭接口返回契约(tmp_path, monkeypatch):
-    """网页不能自己关掉自己 —— 但它能让后台把自己收干净。"""
-    fake = _FakeShutdown()
-    monkeypatch.setattr(server, "_SHUTDOWN", fake)
-    client = TestClient(_app(tmp_path))
-
-    response = client.post("/api/shutdown")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["ok"] is True
-    assert data["stopped"] is True
-    assert "退出" in data["message"]
-
-    # 退出请求是**延迟**发出的 —— 让响应先回到浏览器，
-    # 否则用户看到的是「连接被重置」而不是那句「正在退出」。
-    deadline = time.time() + 5.0
-    while time.time() < deadline and not fake.calls:
-        time.sleep(0.05)
-    assert fake.calls == ["api"]
 
 
-def test_退出钩子能登记(tmp_path, monkeypatch):
-    """启动器靠它把「自己拉起的子进程」登记成收尾动作。"""
-    fake = _FakeShutdown()
-    monkeypatch.setattr(server, "_SHUTDOWN", fake)
-    server.register_shutdown_hook(lambda reason: None)
-    assert len(fake.hooks) == 1
 
 
-def test_顶栏有红色的关闭按钮():
-    """【关闭哨兵】必须在顶栏 —— 用户到处找才找得到。"""
-    html = _read("src", "gui", "templates", "dashboard.html")
-    buttons = [
-        chunk
-        for chunk in html.split("<button")
-        if 'id="shutdown-button"' in chunk
-    ]
-    assert buttons, "顶栏没有【关闭哨兵】按钮"
-    block = buttons[0]
-    assert "btn--danger" in block
-    assert "关闭哨兵" in block
 
 
-def test_前端点了会发关闭指令():
-    """点【关闭哨兵】→ 确认 → ``POST /api/shutdown``。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    assert "confirmShutdown" in js
-    assert "doShutdown" in js
-    assert "/api/shutdown" in js
-    assert 'el.shutdownButton.addEventListener("click", confirmShutdown)' in js
 
 
-def test_关闭前要弹确认框():
-    """关哨兵是不可逆操作 —— 必须让用户确认一次。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    block = js.split("function confirmShutdown", 1)[1].split("\n  }", 1)[0]
-    assert "确认关闭" in block
-    # 后果要说清楚：尤其是「雷达挂载的 Agent 不受影响」。
-    assert "托盘" in block
-    assert "子进程" in block
 
 
 # ---------------------------------------------------------------------------
@@ -421,13 +288,6 @@ def test_快照带占位与存活字段(tmp_path):
     assert snapshot["process_alive"] is None
 
 
-def test_雷达模式的会话是占位(tmp_path):
-    """雷达自己那个空壳 —— 不是用户挂上来的，不给卸载按钮。"""
-    app = _app(tmp_path, radar_mode=True)
-    client = TestClient(app)
-    sessions = client.get("/api/sessions").json()["sessions"]
-    assert sessions
-    assert sessions[0]["placeholder"] is True
 
 
 class _FakeLivenessSession:
@@ -458,110 +318,20 @@ class _FakeRegistry:
         return list(self._sessions)
 
 
-def test_巡检只把死了的标成已退出():
-    """``None``（不知道）**不能**改状态 —— 那是 v3.3.1 放宽过的宽容度。"""
-    dead = _FakeLivenessSession("dead", False)
-    unknown = _FakeLivenessSession("unknown", None)
-    alive = _FakeLivenessSession("alive", True)
-    registry = _FakeRegistry([dead, unknown, alive])
-
-    stop = threading.Event()
-    thread = threading.Thread(
-        target=server._watch_process_liveness,
-        args=(registry, stop),
-        kwargs={"interval": 0.05},
-        daemon=True,
-    )
-    thread.start()
-    time.sleep(0.4)
-    stop.set()
-    thread.join(timeout=3)
-
-    assert dead.exited is True
-    assert unknown.exited is False
-    assert alive.exited is False
 
 
-def test_巡检间隔是十秒():
-    """10 秒是个折中：再快没意义，再慢用户会觉得卡住。"""
-    assert server.PROCESS_LIVENESS_INTERVAL == 10.0
 
 
-# ---------------------------------------------------------------------------
-# 五、挂载列表的清理
-# ---------------------------------------------------------------------------
-def test_会话卡片有卸载按钮():
-    """每个会话卡片（除雷达自身）都要有 ``[×]``。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    assert "session-item__remove" in js
-    assert "detachSession" in js
-    # 点【×】不能连带切到那个会话 —— 卡片本身有点击监听。
-    assert "stopPropagation" in js
 
 
-def test_卸载按钮不给占位会话():
-    """雷达自己那个空壳不给卸载按钮。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    guard = js.split("if (!session.placeholder", 1)
-    assert len(guard) == 2, "前端没有按 placeholder 区分"
-    region = guard[1].split("item.appendChild(remove);", 1)[0]
-    assert "session-item__remove" in region
 
 
-def test_卸载会调删除接口():
-    """点【×】→ ``DELETE /api/sessions/{id}`` → 立刻从列表里移除。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    block = js.split("function detachSession", 1)[1].split("\n  }", 1)[0]
-    assert "method: \"DELETE\"" in block
-    assert "/api/sessions/" in block
-    # 立刻从本地状态里去掉 —— 不等下一次轮询。
-    assert "state.sessions" in block
 
 
-def test_卸载按钮有样式():
-    """按钮得看得出是个能点的东西。"""
-    css = _read("src", "gui", "static", "dashboard.css")
-    assert ".session-item__remove {" in css
-    assert ".session-item__remove:hover" in css
 
 
-def test_删除接口能卸掉会话(tmp_path):
-    """后端这一侧早就有（v3.1.0）—— 这里钉住它的契约。"""
-
-    def factory(info):
-        """假工厂。"""
-        return {
-            "ok": True,
-            "alert_log_path": str(tmp_path / "attached.alerts.jsonl"),
-            "scan_callback": lambda target: {"ok": True, "counts": {}},
-            "workdir": "",
-            "tail_runner": None,
-        }
-
-    app = _app(tmp_path, attach_factory=factory)
-    client = TestClient(app)
-
-    log = tmp_path / "mcode.jsonl"
-    log.write_text("", encoding="utf-8")
-    attached = client.post("/api/attach", json={"path": str(log)})
-    assert attached.status_code == 200
-    session_id = attached.json()["session"]["id"]
-
-    deleted = client.delete("/api/sessions/{}".format(session_id))
-    assert deleted.status_code == 200
-    assert deleted.json()["ok"] is True
-
-    remaining = [
-        item["id"]
-        for item in client.get("/api/sessions").json()["sessions"]
-    ]
-    assert session_id not in remaining
 
 
-def test_已退出状态在界面上是灰的():
-    """Agent 跑完是**正常结束** —— 不用红色吓人。"""
-    css = _read("src", "gui", "static", "dashboard.css")
-    assert '.session-item__state[data-state="exited"]' in css
 
 
 # ---------------------------------------------------------------------------
@@ -613,59 +383,14 @@ def test_雷达扫不到带关键词的日志(tmp_path):
     assert any("good" in path for path in filtered_paths)
 
 
-def test_配置里的排除关键词能被读到(tmp_path):
-    """设置页写进去的值，后端读得出来。"""
-    config = tmp_path / "config.yaml"
-    config.write_text(
-        "radar:\n  exclude_keywords:\n    - neko\n    - stress\n",
-        encoding="utf-8",
-    )
-    assert server._radar_exclude_keywords(str(config)) == ["neko", "stress"]
-    assert server._effective_exclude_keywords(str(config)) == [
-        "neko",
-        "stress",
-    ]
 
 
-def test_没配就用内置默认清单(tmp_path):
-    """「没写」→ 用默认清单。"""
-    config = tmp_path / "config.yaml"
-    config.write_text("radar: {}\n", encoding="utf-8")
-    assert server._radar_exclude_keywords(str(config)) is None
-    assert server._effective_exclude_keywords(str(config)) == list(
-        DEFAULT_EXCLUDE_KEYWORDS
-    )
 
 
-def test_配空列表就是什么都不排除(tmp_path):
-    """⚠️ 「空列表」与「没配」是两回事 —— 空列表要有意义。"""
-    config = tmp_path / "config.yaml"
-    config.write_text("radar:\n  exclude_keywords: []\n", encoding="utf-8")
-    assert server._radar_exclude_keywords(str(config)) == []
-    assert server._effective_exclude_keywords(str(config)) == []
 
 
-def test_排除关键词能写回配置(tmp_path):
-    """设置页提交 → 翻译成 yaml 路径 → 写回。"""
-    updates = server._collect_config_updates(
-        {"radar": {"exclude_keywords": ["neko", "  "]}}
-    )
-    assert ("radar.exclude_keywords", ["neko"]) in updates
-
-    updates = server._collect_config_updates(
-        {"radar": {"custom_process_features": ["neko"]}}
-    )
-    assert ("radar.custom_process_features", ["neko"]) in updates
 
 
-def test_设置接口带着雷达配置(tmp_path):
-    """设置页要显示「当前实际生效」的值。"""
-    client = TestClient(_app(tmp_path))
-    data = client.get("/api/config").json()
-    assert "radar_exclude_keywords" in data
-    assert "radar_custom_features" in data
-    assert isinstance(data["radar_exclude_keywords"], list)
-    assert isinstance(data["radar_custom_features"], list)
 
 
 def test_示例配置里有这两项():
@@ -736,79 +461,22 @@ def test_自定义特征不会被空串误伤():
     assert detect_custom_agent("node.exe run.js", features=["", "  "]) == ""
 
 
-def test_自定义特征能从配置里读到(tmp_path):
-    """设置页写进去的 ``neko`` 要能被雷达用上。"""
-    config = tmp_path / "config.yaml"
-    config.write_text(
-        "radar:\n  custom_process_features:\n    - neko\n", encoding="utf-8"
-    )
-    assert server._radar_custom_features(str(config)) == ["neko"]
 
 
-def test_没配自定义特征就是空列表(tmp_path):
-    """没配 → 空列表（不是 ``None``）。"""
-    config = tmp_path / "config.yaml"
-    config.write_text("radar: {}\n", encoding="utf-8")
-    assert server._radar_custom_features(str(config)) == []
 
 
-# ---------------------------------------------------------------------------
-# 八、界面：流水初始提示 + 旁路说明
-# ---------------------------------------------------------------------------
-def test_流水区有初始提示():
-    """空面板看着像卡住了 —— 得说清楚「我在读，只是一切正常」。"""
-    html = _read("src", "gui", "templates", "dashboard.html")
-    assert 'id="live-audit-placeholder"' in html
-    assert (
-        "正在实时读取日志流，若无告警，此处将滚动显示正常操作。" in html
-    )
 
 
-def test_流水提示有样式():
-    css = _read("src", "gui", "static", "dashboard.css")
-    assert ".live-audit__placeholder {" in css
 
 
-def test_前端会把初始提示收起来():
-    """第一条真实流水进来 → 提示让位；清空 → 提示回来。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    assert "resetLiveAuditPlaceholder" in js
-    assert "live-audit-placeholder" in js
 
 
-def test_设置页说清楚是旁路不是_hook():
-    """「看不到 Hook 的痕迹」不等于「它没在工作」—— 这要说破。"""
-    html = _read("src", "gui", "templates", "settings_sessions.html")
-    assert "旁路日志跟随" in html
-    assert "不是侵入式 Hook" in html
-    assert "JSON 日志输出" in html
 
 
-def test_设置页有雷达关键词输入框():
-    """两个 textarea —— 排除关键词 + 自定义特征。"""
-    html = _read("src", "gui", "templates", "settings_sessions.html")
-    assert 'id="radar-exclude-keywords"' in html
-    assert 'id="radar-custom-features"' in html
 
 
-def test_设置页_js_会提交并回填():
-    """填了要能存，打开要能看见。"""
-    js = _read("src", "gui", "static", "settings_sessions.js")
-    assert "radar-exclude-keywords" in js
-    assert "radar-custom-features" in js
-    assert "exclude_keywords" in js
-    assert "custom_process_features" in js
 
 
-# ---------------------------------------------------------------------------
-# 九、启动器：只结束**自己**拉起的子进程
-# ---------------------------------------------------------------------------
-def test_启动器有子进程回收():
-    """红线 R6 —— 退出时把自己拉起的 Agent 收掉。"""
-    text = _read("_构建与发布", "scripts", "run_with_sentinel.py")
-    assert "_terminate_agent_trees" in text
-    assert "register_shutdown_hook" in text
-    assert "start_tray_icon" in text
 
 
 def test_启动器不会去杀用户的进程():

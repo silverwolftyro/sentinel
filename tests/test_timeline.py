@@ -11,11 +11,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import threading
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
+from src.core.session_server import parse_event_line
 from src.core.timeline import (
     NODE_ACTION,
     NODE_ALERT,
@@ -28,12 +26,6 @@ from src.core.timeline import (
     format_gap,
     render_timeline_text,
     summarize,
-)
-from src.gui.server import (
-    SessionSpec,
-    WatchTarget,
-    create_app,
-    parse_event_line,
 )
 
 
@@ -295,86 +287,8 @@ def _write_lines(path: Path, lines) -> None:
             handle.write(line + "\n")
 
 
-def test_看板时间线端点(tmp_path):
-    """从日志文件到看板端点 —— 整条链路要通。"""
-    watch = tmp_path / "agent.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert_log = tmp_path / "alerts.log"
-    alert_log.write_text("", encoding="utf-8")
-    _write_lines(
-        alert_log,
-        [
-            "2026-10-27 10:00:00,000 WARNING EVENT_JSON "
-            + json.dumps(_event(), ensure_ascii=False),
-            "2026-10-27 10:05:00,000 WARNING ALERT_JSON "
-            + json.dumps(
-                _alert(
-                    ts=1793105100.0,
-                    safe_point={
-                        "id": "sp-1",
-                        "rollback_point": {"id": "sp-base"},
-                    },
-                ),
-                ensure_ascii=False,
-            ),
-        ],
-    )
-
-    spec = SessionSpec(
-        id="tl",
-        label="时间线会话",
-        agent="codex",
-        watch_path=str(watch),
-        alert_log_path=str(alert_log),
-        watch_target=WatchTarget(agent="codex"),
-    )
-    app = create_app(
-        sessions=[spec],
-        host="127.0.0.1",
-        port=8000,
-        start_watcher=True,
-        poll_interval=0.05,
-    )
-    with TestClient(app) as client:
-        body = {}
-        deadline = 5.0
-        waited = 0.0
-        while waited < deadline:
-            body = client.get("/api/sessions/tl/timeline").json()
-            if body.get("nodes"):
-                break
-            waited += 0.05
-            threading.Event().wait(0.05)
-
-    assert body["ok"] is True
-    kinds = [node["kind"] for node in body["nodes"]]
-    assert NODE_ACTION in kinds
-    assert NODE_REDLINE in kinds
-
-    # 红线节点要能关联到 Diff 基线。
-    redline = [
-        node for node in body["nodes"] if node["kind"] == NODE_REDLINE
-    ][0]
-    assert redline["point_id"] == "sp-base"
-    assert redline["has_diff"] is True
 
 
-def test_时间线端点对不存在的会话返回404(tmp_path):
-    """会话不存在要说清楚，别给一份空时间线糊弄人。"""
-    watch = tmp_path / "a.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert_log = tmp_path / "a.log"
-    alert_log.write_text("", encoding="utf-8")
-    spec = SessionSpec(
-        id="only",
-        watch_path=str(watch),
-        alert_log_path=str(alert_log),
-    )
-    app = create_app(sessions=[spec], host="127.0.0.1", port=8000)
-    with TestClient(app) as client:
-        response = client.get("/api/sessions/nope/timeline")
-    assert response.status_code == 404
-    assert response.json()["ok"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -421,45 +335,3 @@ def test_启动器写事件失败不抛异常(tmp_path):
         "开始目标",
     )
     assert payload["kind"] == "session_start"
-
-
-# ---------------------------------------------------------------------------
-# 前端
-# ---------------------------------------------------------------------------
-def test_顶栏有时间线按钮():
-    """【时间线】按钮得在顶栏上 —— 用户要找得到。"""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(
-        os.path.join(root, "src", "gui", "templates", "dashboard.html"),
-        encoding="utf-8",
-    ) as handle:
-        html = handle.read()
-    assert 'id="timeline-button"' in html
-    assert "时间线" in html
-
-
-def test_前端接了时间线与体检():
-    """两个按钮都要真的绑上处理函数。"""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(
-        os.path.join(root, "src", "gui", "static", "dashboard.js"),
-        encoding="utf-8",
-    ) as handle:
-        js = handle.read()
-    assert "timeline-button" in js
-    assert "health-button" in js
-    assert "openTimeline" in js
-    assert "openHealth" in js
-    assert "/timeline" in js
-    assert "/api/health" in js
-
-
-def test_前端认得时间线事件():
-    """``timeline_event`` 走 SSE 进来 —— 前端要认。"""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(
-        os.path.join(root, "src", "gui", "static", "dashboard.js"),
-        encoding="utf-8",
-    ) as handle:
-        js = handle.read()
-    assert "timeline_event" in js

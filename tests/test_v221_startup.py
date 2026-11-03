@@ -60,132 +60,16 @@ class _Recorder:
         return self.buffer.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# 任务一：无参数 → 交互式启动菜单（v3.0.2 改）
-# ---------------------------------------------------------------------------
-def test_无参数时显示菜单并默认选雷达(monkeypatch):
-    """双击 exe（无参数）必须**先出菜单**，不能直接进演示。
-
-    v3.0.2 的设计：终端里打印三个选项让用户按键选。
-    非交互环境（没有终端可输入）→ 走默认值 ``[2] 开启雷达`` ——
-    默认给「真实的东西」比默认给「假的」诚实。
-    """
-    entry = _load_entry()
-    captured = {}
-
-    def _fake_server_main(argv=None):
-        captured["argv"] = list(argv or [])
-        return 0
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-
-    assert entry.main([]) == 0
-    # 默认选项是「开启雷达」，不是演示。
-    assert "--radar" in captured["argv"]
-    assert "--demo" not in captured["argv"]
 
 
-def test_无参数时菜单打印三个选项(monkeypatch, capsys):
-    """菜单必须把三个选项原样打印到终端。"""
-    entry = _load_entry()
-
-    def _fake_server_main(argv=None):
-        return 0
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-
-    entry.main([])
-    output = capsys.readouterr().out
-
-    assert "[1] 启动演示模式 (体验界面)" in output
-    assert "[2] 开启雷达 (扫描已有的 Agent 日志)" in output
-    assert "[3] 接管并启动新的 Agent" in output
 
 
-def test_显式_demo_不被重复添加(monkeypatch):
-    """已经写了 ``--demo`` 就别再加一遍。"""
-    entry = _load_entry()
-    captured = {}
-
-    def _fake_server_main(argv=None):
-        captured["argv"] = list(argv or [])
-        return 0
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-
-    entry.main(["--demo"])
-    assert captured["argv"].count("--demo") == 1
 
 
-def test_其它参数原样传下去(monkeypatch):
-    """端口、主机这些参数不能被入口吃掉。"""
-    entry = _load_entry()
-    captured = {}
-
-    def _fake_server_main(argv=None):
-        captured["argv"] = list(argv or [])
-        return 0
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-
-    entry.main(["--demo", "--port", "8123", "--no-browser"])
-    argv = captured["argv"]
-    assert "--port" in argv and "8123" in argv
-    assert "--no-browser" in argv
 
 
-def test_看板起不来时不闪退(monkeypatch):
-    """端口被占这类「返回非零码」的失败，窗口也得**挂住**。"""
-    entry = _load_entry()
-    waited = []
-
-    def _fake_server_main(argv=None):
-        return 2
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-    monkeypatch.setattr(entry, "_wait_for_user", lambda *a, **k: waited.append(1))
-
-    assert entry.main([]) == 2
-    assert waited, "看板起不来时必须挂住等用户看提示"
 
 
-def test_看板正常跑完不挂起(monkeypatch):
-    """正常结束（退出码 0）不该拦着用户。"""
-    entry = _load_entry()
-    waited = []
-
-    def _fake_server_main(argv=None):
-        return 0
-
-    from src.gui import server
-
-    monkeypatch.setattr(server, "main", _fake_server_main)
-    monkeypatch.setattr(entry, "_startup_webhook_probe", lambda: None)
-    monkeypatch.setattr(entry, "_startup_health", lambda: None)
-    monkeypatch.setattr(entry, "_wait_for_user", lambda *a, **k: waited.append(1))
-
-    assert entry.main([]) == 0
-    assert not waited
 
 
 def test_与启动脚本行为一致():
@@ -253,34 +137,8 @@ def test_清掉标记后可以再跑():
     reset_startup_health_cache()
 
 
-def test_看板演示模式也走体检(monkeypatch):
-    """``python -m src.gui.server --demo`` 这条路**也要**体检。"""
-    from src.gui import server
-
-    calls = []
-
-    def _fake_check(config=None, **kwargs):
-        calls.append(kwargs)
-        return []
-
-    monkeypatch.setattr(
-        "src.core.health.run_startup_health_check", _fake_check
-    )
-    # 只验证「演示模式会调用体检」这一件事，
-    # 不真的起服务（那要占端口）。
-    source = open(server.__file__, encoding="utf-8").read()
-    assert "run_startup_health_check" in source
-    assert "--no-health" in source
 
 
-def test_服务端解析器认识_no_health():
-    """``--no-health`` 必须被看板的解析器认识 —— 否则又是一次闪退。"""
-    from src.gui import server
-
-    parser = server.main.__doc__
-    assert parser is not None
-    source = open(server.__file__, encoding="utf-8").read()
-    assert '"--no-health"' in source
 
 
 # ---------------------------------------------------------------------------

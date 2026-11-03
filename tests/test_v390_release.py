@@ -30,12 +30,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
-import pytest
-
-from src.core.engine import (
-    IntentTracker,
-    detect_routine_maintenance,
-)
+from src.core.engine import IntentTracker, detect_routine_maintenance
 from src.core.live_audit import (
     extract_snippet,
     first_sentences,
@@ -581,41 +576,11 @@ class TestToken预算:
 class Test移动端适配:
     """768px 断点下的窄屏布局。"""
 
-    def test_存在768断点(self) -> None:
-        """看板样式表要有 768px 的移动端块。"""
-        assert "@media (max-width: 768px)" in _read_css()
 
-    def test_窄屏隐藏分隔条(self) -> None:
-        """拖拽分隔条在窄屏下必须消失。"""
-        css = _read_css()
-        block = css.split("@media (max-width: 768px)", 1)[1]
-        assert re.search(r"\.resizer[^{]*\{[^}]*display\s*:\s*none", block)
 
-    def test_窄屏按钮不小于44像素(self) -> None:
-        """触摸目标至少 44px。"""
-        css = _read_css()
-        block = css.split("@media (max-width: 768px)", 1)[1]
-        heights = [
-            int(value)
-            for value in re.findall(r"min-height\s*:\s*(\d+)px", block)
-        ]
-        assert heights, "窄屏块里应该有 min-height"
-        assert max(heights) >= 44
 
-    def test_底部标签栏存在(self) -> None:
-        """模板里要有四个 Tab 的导航条。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert 'id="mobile-tabs"' in html
 
-    def test_看板脚本有移动端标签逻辑(self) -> None:
-        """前端要有 Tab 切换的实现。"""
-        js = _read_js("dashboard.js")
-        assert "initMobileTabs" in js
-        assert "applyMobileTab" in js
 
-    def test_路由脚本会同步标签状态(self) -> None:
-        """换页后 body 上的 data 属性要跟着换。"""
-        assert "swapBody" in _read_js("router.js")
 
 
 # ---------------------------------------------------------------------------
@@ -624,17 +589,7 @@ class Test移动端适配:
 class Test前后端一致:
     """极限摘要的剥离算法前后端必须一致。"""
 
-    def test_前端有同名的两个函数(self) -> None:
-        """前端镜像了后端的两个原语。"""
-        js = _read_js("dashboard.js")
-        assert "stripLogCodeBlocks" in js
-        assert "firstSentences" in js
 
-    def test_前端暴露了100档常量(self) -> None:
-        """100 档只取前两句。"""
-        js = _read_js("dashboard.js")
-        assert "LOG_EXTREME_SENTENCES" in js
-        assert re.search(r"LOG_EXTREME_SENTENCES\s*=\s*2", js)
 
 
 # ---------------------------------------------------------------------------
@@ -642,29 +597,3 @@ class Test前后端一致:
 # ---------------------------------------------------------------------------
 class Test前端行为:
     """用 Node 把 dashboard.js 跑起来，断言它的**行为**。"""
-
-    def test_夹具全绿(self) -> None:
-        """Node 在 → 跑夹具；不在 → 跳过（Node 不是运行依赖）。"""
-        import shutil
-        import subprocess
-
-        node = shutil.which("node")
-        if not node:
-            pytest.skip("本机没有 Node，跳过前端行为测试")
-        harness = os.path.join(
-            ROOT, "tests", "fixtures", "v390_frontend_harness.js"
-        )
-        result = subprocess.run(
-            [node, harness],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            # Node 输出是 UTF-8，而本机默认编码是 GBK，必须显式指定，
-            # 否则中文用例名会让解码线程抛 UnicodeDecodeError。
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert "FAIL" not in result.stdout
-        assert "通过" in result.stdout

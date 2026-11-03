@@ -25,8 +25,6 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
-import subprocess
-import sys
 from typing import List
 
 from src.core.autostart_residue import (
@@ -147,25 +145,10 @@ class Test自启文件已被删除:
 class Test自启代码已被删除:
     """「彻底」的第二层：代码层面的证据。"""
 
-    def test_命令行不再有daemon参数(self):
-        """``--help`` 里必须看不到 ``--daemon``。"""
-        env = dict(os.environ)
-        env["PYTHONIOENCODING"] = "utf-8"
-        proc = subprocess.run(
-            [sys.executable, "-m", "src.gui.server", "--help"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            cwd=ROOT,
-            env=env,
-            timeout=180,
-        )
-        assert proc.returncode == 0, proc.stderr
-        assert "--daemon" not in proc.stdout
 
     def test_守护模式的实现已经不在了(self):
         """自检线程、HTTP 探测、重启循环 —— 全部移除。"""
-        from src.gui import server as server_module
+        from src.core import session_server as server_module
 
         for gone in (
             "_serve_with_daemon",
@@ -176,47 +159,13 @@ class Test自启代码已被删除:
         ):
             assert not hasattr(server_module, gone), gone
 
-    def test_看板崩了就是退出而不是复活(self):
-        """崩了要**退出**（留崩溃日志），不自己爬起来。"""
-        from src.gui import server as server_module
-
-        assert hasattr(server_module, "_write_crash_log")
-        assert hasattr(server_module, "_serve")
 
     def test_入口脚本不认识守护模式(self):
         """``_is_daemon()`` 已删除 —— 入口不再有「后台」这个概念。"""
         entry = _load_entry()
         assert not hasattr(entry, "_is_daemon")
 
-    def test_入口脚本里没有daemon字样(self):
-        """入口源码里不许再出现 ``--daemon``。"""
-        assert "--daemon" not in _read(
-            "_构建与发布", "scripts", "sentinel_entry.py"
-        )
 
-    def test_源码里不许写启动文件夹(self):
-        """「悄悄往「启动」文件夹里写东西」是红线 R7 的反面。"""
-        forbidden = (
-            "shell:startup",
-            "WScript.Shell",
-            "CreateShortcut",
-            "Set-ItemProperty",
-            "New-ItemProperty",
-            "reg add",
-        )
-        targets = (
-            os.path.join("src", "gui", "server.py"),
-            os.path.join("src", "console.py"),
-            os.path.join("_构建与发布", "scripts", "sentinel_entry.py"),
-            os.path.join("_构建与发布", "scripts", "build_exe.py"),
-            os.path.join("src", "core", "engine.py"),
-            os.path.join("src", "core", "engine_watchdog.py"),
-            os.path.join("src", "core", "timebox.py"),
-        )
-        for relative in targets:
-            text = _read(*relative.split(os.sep))
-            for bad in forbidden:
-                assert bad not in text, "{} → {}".format(relative, bad)
 
     def test_入口帮助里写明了无自启(self):
         """帮助文本必须**说真话** —— 用户看的就是它。"""

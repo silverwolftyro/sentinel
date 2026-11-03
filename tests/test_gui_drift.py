@@ -16,14 +16,11 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi.testclient import TestClient
-
 from src.core.engine import IntentTracker
-from src.gui.server import (
+from src.core.session_server import (
     TailRunner,
     TaskGoal,
     _tail_scan_stub,
-    create_app,
     normalize_alert,
     parse_alert_line,
 )
@@ -83,76 +80,16 @@ class _FakeEngine:
         self.closed = True
 
 
-def _make_app(tmp_path, **kwargs):
-    """造一个指向临时目录的应用（默认不启动后台线程）。"""
-    watch = tmp_path / "agent.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert_log = tmp_path / "alerts.log"
-    alert_log.write_text("", encoding="utf-8")
-    return create_app(
-        str(watch),
-        str(alert_log),
-        start_watcher=False,
-        **kwargs,
-    )
 
 
-# ---------------------------------------------------------------------------
-# 任务目标端点
-# ---------------------------------------------------------------------------
-def test_task_goal_endpoint_defaults_to_empty(tmp_path):
-    """没设过目标时，GET 返回空串。"""
-    app = _make_app(tmp_path)
-    with TestClient(app) as client:
-        response = client.get("/api/task_goal")
-
-    assert response.status_code == 200
-    assert response.json() == {"ok": True, "goal": ""}
 
 
-def test_task_goal_post_sets_and_returns_goal(tmp_path):
-    """POST 设定目标，返回设定后的值。"""
-    app = _make_app(tmp_path)
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/task_goal", json={"goal": "重构 auth 模块并修复 bug"}
-        )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["goal"] == "重构 auth 模块并修复 bug"
 
 
-def test_task_goal_post_trims_whitespace(tmp_path):
-    """首尾空白被裁掉 —— 目标文本会直接进 Prompt。"""
-    app = _make_app(tmp_path)
-    with TestClient(app) as client:
-        client.post("/api/task_goal", json={"goal": "  修复登录 bug  "})
-        current = client.get("/api/task_goal").json()
-
-    assert current["goal"] == "修复登录 bug"
 
 
-def test_task_goal_post_empty_string_clears_goal(tmp_path):
-    """空串表示停用意图漂移检测。"""
-    app = _make_app(tmp_path)
-    with TestClient(app) as client:
-        client.post("/api/task_goal", json={"goal": "清理构建产物"})
-        client.post("/api/task_goal", json={"goal": "   "})
-        current = client.get("/api/task_goal").json()
-
-    assert current["goal"] == ""
 
 
-def test_task_goal_holder_shares_state_with_app(tmp_path):
-    """应用与外部持有的是**同一个** TaskGoal 实例。"""
-    holder = TaskGoal("初始目标")
-    app = _make_app(tmp_path, task_goal=holder)
-    with TestClient(app) as client:
-        client.post("/api/task_goal", json={"goal": "新目标"})
-
-    assert holder.get() == "新目标"
 
 
 def test_task_goal_holder_notifies_listener_on_change(tmp_path):
@@ -203,36 +140,10 @@ def test_drift_alert_normalized_is_standard_severity():
     assert normalized["reason"].startswith("[WARNING] 意图漂移")
 
 
-def test_dashboard_js_maps_drift_to_its_own_class():
-    """前端把 DRIFT 归到自己的类，不落进红色的 danger。"""
-    js = (STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
-
-    assert '"DRIFT"' in js
-    assert '"drift"' in js
-    # DRIFT 必须在 DANGEROUS 之前被单独判掉。
-    drift_at = js.index('"DRIFT"')
-    danger_at = js.index('"DANGEROUS"')
-    assert drift_at > danger_at
-    assert 'return "drift";' in js
 
 
-def test_dashboard_css_defines_drift_color():
-    """橘黄色漂移卡片有独立的样式变量。"""
-    css = (STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
-
-    assert "--drift:" in css
-    assert ".alert-card--drift" in css
-    assert ".tag--drift" in css
 
 
-def test_dashboard_html_has_goal_input():
-    """顶栏有任务目标输入框。"""
-    from src.gui.server import TEMPLATES_DIR
-
-    html = (Path(TEMPLATES_DIR) / "dashboard.html").read_text(encoding="utf-8")
-
-    assert "goal-form" in html
-    assert "task_goal" in html or "任务目标" in html
 
 
 # ---------------------------------------------------------------------------

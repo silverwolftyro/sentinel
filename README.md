@@ -117,6 +117,70 @@
 
 ---
 
+## ⚠️ v5.0.0：哨兵变成了**无头守护进程**
+
+> **这一版动的是架构，不是界面。** 读完这一节，你就知道现在该怎么用它。
+
+### 变了什么
+
+| 之前（≤ v4.3.1） | 现在（v5.0.0） |
+| --- | --- |
+| 双击弹出一个**浏览器看板** | 双击**什么也不弹** —— 它在后台安静地干活 |
+| FastAPI + Jinja2 + SSE + **574 KB** 前端资源 | **全没了**。对外接口只用标准库 `http.server` |
+| 一个**全局** `task_goal` | **每一路会话一个目标**，按 CWD / session_id / thread_id 精准分区 |
+| 没有目标的会话也照跑 L2 | 没目标 → **L2 自动休眠**（不调模型），只留 L1 纯规则拦截 |
+| 6 个第三方依赖（fastapi / uvicorn / jinja2 / httpx / pystray / pillow） | **0 个** —— 只剩 requests / pyyaml / watchdog / psutil |
+| 产物叫 `sentinel.exe` | 产物叫 **`sentinel-daemon.exe`**（名字说实话：它是守护进程） |
+
+**为什么**：哨兵的价值在**内核**（L1 规则、L2 漂移、守护者、派发），
+不在那一层界面。界面带来的只有依赖、体积、内存和一个「双击没反应」的误会。
+把内核留下、把界面剥掉，哨兵就能作为一个 **OS 级进程**安静地待着 ——
+替外部宿主（第三方 Agent 插件、CI、别的守护程序）提供「安检」与「挂起」。
+
+### 怎么用（无头模式）
+
+```powershell
+# 1) 起守护进程（默认 127.0.0.1:8787）
+sentinel-daemon.exe --daemon
+
+# 2) 让外部宿主在 Agent 动手**之前**问一句「这活儿能做吗」
+curl -X POST http://127.0.0.1:8787/api/pre-check `
+     -d '{"text": "把支付模块的重试逻辑改成指数退避"}'
+# → {"action": "allow"}   或   {"action": "block", "rule_id": "..."}
+
+# 3) 让哨兵后台静默监听某一路会话
+curl -X POST http://127.0.0.1:8787/api/attach `
+     -d '{"cwd": "D:/projects/myapp", "pid": 12345, "agent": "codex"}'
+# → {"fingerprint": "...", "goal": "从日志首句提取的目标", "l2_sleeping": false}
+
+# 4) 看所有会话的状态（各自的目标、各自的休眠状态）
+curl http://127.0.0.1:8787/api/state
+```
+
+### 四个端点
+
+| 端点 | 方法 | 用途 |
+| --- | --- | --- |
+| `/api/health` | GET | 活着吗？版本、模式、会话数、几路在休眠 |
+| `/api/pre-check` | POST | **纯 L1 规则**秒级判定：`{"action": "allow"｜"block"}` |
+| `/api/attach` | POST | 挂载一路（`cwd` + `pid` + 可选 `log_path`） |
+| `/api/state` | GET | 所有会话的快照（各自的目标与休眠状态） |
+
+**报警不弹窗**：命中红线只在**终端**打一行，
+并（配了 `--callback-url` 就）往那儿 POST 一条极简 JSON。
+
+⚠️ **安全边界**：只绑 `127.0.0.1`，**没有鉴权** —— 它假定「同机的其他进程都可信」。
+要跨机器用，请自己在前面加一层反代与鉴权。
+
+### 老的用法还在
+
+```powershell
+sentinel-daemon.exe --agent mcode "把 README 改清楚"   # 接管真实 Agent，边跑边审
+sentinel-daemon.exe --scan path/to/agent.jsonl        # 命令行审查一份已有日志
+```
+
+---
+
 ## 核心特性
 
 | 特性 | 说明 |

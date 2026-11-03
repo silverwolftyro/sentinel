@@ -49,7 +49,7 @@ from typing import List, Optional
 try:
     from src import __version__  # type: ignore
 except Exception:  # noqa: BLE001 —— 打包解包顺序异常时的兜底
-    __version__ = "4.3.1"
+    __version__ = "5.0.0"
 
 try:
     # v3.8.0：第二个实例的退出码 —— 与「正常退出（0）」「启动失败（2）」区分。
@@ -63,20 +63,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
 
 #: 纯文本帮助。
-HELP_TEXT = """哨兵 Sentinel v{version} —— AI CLI Agent 的只读审计监控
+HELP_TEXT = """哨兵 Sentinel v{version} —— AI CLI Agent 的无头审计守护进程
 
 用法：
-  sentinel                          演示模式：生成模拟日志并打开看板
-                                    （先看看它长什么样）
-                                    ⚠️ 看板会挂红色横幅、会话名带「[演示]」，
-                                       终端也会打印醒目说明 —— 都是模拟数据，
-                                       没有监控任何真实进程。
-                                    横幅最右侧有【退出演示，开始真实扫描】按钮，
-                                    点它会停掉演示并给出真命令。
+  sentinel                          守护模式：起一个无头服务，
+                                    静默审查本机上的 Agent 会话
   sentinel --agent <类型> <任务>     接管真实的 AI CLI Agent，边跑边审
   sentinel --session-file <JSON>    多路会话：同时接管多个 Agent
   sentinel --scan <日志>            命令行审查一份已有的 Agent 日志
-  sentinel --demo                   与无参数相同（演示模式）
+  sentinel --daemon                 守护模式（与无参数相同）
   sentinel --version                显示版本号
   sentinel --help                   显示这份帮助
 
@@ -87,18 +82,25 @@ HELP_TEXT = """哨兵 Sentinel v{version} —— AI CLI Agent 的只读审计监
                                   （gemini / command-code / dsh / pi / step …），
                                   清单见 src/agents/cloud_agents.json
   --cwd <目录>                   Agent 的工作目录（默认当前目录）
-  --port <端口>                  看板端口（默认 8000）
-  --host <地址>                  看板监听地址（默认 127.0.0.1）
-  --no-browser                   看板启动后不自动打开浏览器
-  --no-gui                      不启动看板，只在终端审查
+  --port <端口>                  守护服务的 HTTP 端口（默认 8787）
+  --host <地址>                  守护服务监听地址（默认 127.0.0.1）
+  --callback-url <地址>          命中红线时往这儿 POST 一条极简报警
+                                  （不配就只打终端）
   --no-llm                      不调用模型层，只做规则层判定
   --no-guardian                 不启用守护者（只观察，不挂起进程）
   --no-notify                   不装配任何告警通道
-  --keep-alive                  Agent 跑完后不关看板（适合挂一整夜）
   --no-briefing                 会话结束时不生成晨报
   --no-health                   启动时不跑开箱安全体检
   --config <路径>                哨兵配置文件（默认 config/config.yaml）
   --extra-arg <参数>            透传给 Agent 的额外参数（可重复）
+
+对外接口（守护模式，127.0.0.1:8787）
+  GET  /api/health               活着吗？版本、会话数、几路在休眠
+  POST /api/pre-check            外部宿主问一句「这活儿能做吗」
+                                  {{"text": "…"}} → {{"action": "allow"|"block"}}
+  POST /api/attach               {{"cwd": "…", "pid": 123}}
+                                  → 内核开始后台静默监听那一路
+  GET  /api/state                所有会话的快照（含各自的目标与休眠状态）
 
 配置与密钥：
   配置文件默认读「exe 同目录下的 config/config.yaml」；
@@ -212,6 +214,22 @@ v4.0.1 新增：
                 用同一批真实窗口、同一个模型、同一个目标、
                 只换摘要生成方式，两个格式**逐窗对比**。
                 结论写在 CHANGELOG 与版本文档里，**数字都是实跑出来的**。
+
+v5.0.0 新增：
+  无头守护进程  面板（FastAPI + Jinja2 + SSE + 前端静态资源）
+                **整体剥离** —— 双击什么也不弹，
+                它在后台安静地干活。
+                依赖从 10 个降到 4 个，体积大幅下降。
+  极简接口    只用标准库 http.server，四个端点：
+                  GET  /api/health       活着吗？几路在休眠
+                  POST /api/pre-check    「这活儿能做吗」→ allow/block
+                  POST /api/attach       挂载一路（cwd + pid）
+                  GET  /api/state        所有会话的快照
+                ⚠️ 只绑 127.0.0.1，没有鉴权。
+  会话级隔离  目标锚点下沉到**每一路会话**（按 CWD / session_id /
+                thread_id 分区），绝不串台；
+                提不出目标的那路，**L2 自动休眠**，
+                只留 L1 纯规则拦截。
 
 v4.3.1 新增：
   界面中性化    雷达面板的标题从某个特定项目的私人称呼，
@@ -865,6 +883,33 @@ def _install_process_group() -> None:
         )
 
 
+#: 守护模式认的开关（其余参数一律忽略 —— 不再传给别的模块）。
+_DAEMON_FLAGS = ("--host", "--port", "--config", "--callback-url")
+
+
+def _daemon_args(args: List[str]) -> List[str]:
+    """从命令行里挑出**守护服务**要用的参数。
+
+    ⚠️ 不能把整份 ``args`` 原样传下去 ——
+    里面可能有 ``--agent`` / ``--cwd`` 这类**接管模式**的参数，
+    守护服务不认，传过去只会让它报错退出。
+
+    :param args: 完整参数列表。
+    :return: 守护服务的参数列表。
+    """
+    out: List[str] = []
+    index = 0
+    while index < len(args):
+        item = args[index]
+        if item in _DAEMON_FLAGS:
+            out.append(item)
+            if index + 1 < len(args):
+                out.append(args[index + 1])
+                index += 1
+        index += 1
+    return out
+
+
 def _dispatch(argv: Optional[List[str]] = None) -> int:
     """真正干活的入口（被 :func:`main` 包着）。
 
@@ -901,18 +946,11 @@ def _dispatch(argv: Optional[List[str]] = None) -> int:
     # 放在最前面：用户刚启动就该知道「手机能不能收到」。
     _startup_webhook_probe()
 
-    # --- 无参数：先问用户想干什么（v3.0.2）---
+    # --- 无参数：先问用户想干什么（v3.0.2，v5.0.0 改）---
     #
-    # ⚠️ 为什么不再直接进演示
-    # ========================
-    #
-    # v3.0.1 的实测反馈：「**双击 exe 依然直接进演示模式**」。
-    #
-    # 演示模式本身没问题 —— 它该做的是「让人先看看长什么样」。
-    # 问题是**双击就默认进演示**：用户以为「雷达扫不到真实的进程」，
-    # 是因为哨兵**压根没问他要干什么**就替他决定了。
-    #
-    # 所以这里把选择权交回给用户 —— 三个选项，一句话说清每个是干什么的。
+    # ⚠️ v5.0.0：不再有「演示模式」这个选项了 ——
+    # 面板已经整体剥离，**没有界面可演示**。
+    # 剩下的两个选择是：「守护模式」与「接管并启动新的 Agent」。
     if not args:
         from src.console import (
             START_MENU_DEFAULT,
@@ -922,48 +960,22 @@ def _dispatch(argv: Optional[List[str]] = None) -> int:
 
         print_start_menu()
         choice = read_start_choice(START_MENU_DEFAULT)
-        if choice == "1":
-            print("[SENTINEL] 已选择：启动演示模式（体验界面）。")
-            args = ["--demo"]
-        elif choice == "3":
+        if choice == "2":
             print("[SENTINEL] 已选择：接管并启动新的 Agent。")
             return _dispatch_takeover()
-        else:
-            print("[SENTINEL] 已选择：开启雷达（扫描已有的 Agent 日志）。")
-            args = ["--radar"]
+        print("[SENTINEL] 已选择：守护模式（无头服务）。")
+        args = ["--daemon"]
 
-    # --- 演示模式（--demo）---
-    if "--demo" in args:
-        from src.gui.server import main as server_main
-
-        # ⚠️ 演示模式没有启动器接手 —— 体检在这儿跑。
-        # ⚠️ 用的是 ``run_startup_health_check`` —— **一个进程只体检一次**，
-        # 免得看板那边又打一份，终端上出现两份统计。
-        if "--no-health" not in args:
-            _startup_health()
-        # ⚠️ ``--demo`` 必须**原样传下去** ——
-        # 看板自己认这个开关，摘掉它就会报「必须给 --watch」。
-        code = int(server_main(list(args)) or 0)
-        if code != 0:
-            # 看板**没能起来**（端口被占 / 配置有问题）。
-            # ⚠️ 这时窗口**绝不能闪退** —— 用户还没看清提示呢。
-            print(
-                "[SENTINEL] 哨兵没能正常启动（退出码 {}）。".format(code),
-                flush=True,
-            )
-            _wait_for_user()
-        return code
-
-    # --- 雷达模式（--radar）---
-    if "--radar" in args:
-        from src.gui.server import main as server_main
+    # --- 守护模式（--daemon；--radar 是旧名，保留兼容）---
+    if "--daemon" in args or "--radar" in args:
+        from src.daemon.server import main as daemon_main
 
         if "--no-health" not in args:
             _startup_health()
-        code = int(server_main(list(args)) or 0)
+        code = int(daemon_main(_daemon_args(args)) or 0)
         if code != 0:
             print(
-                "[SENTINEL] 雷达没能正常启动（退出码 {}）。".format(code),
+                "[SENTINEL] 守护进程没能正常启动（退出码 {}）。".format(code),
                 flush=True,
             )
             _wait_for_user()

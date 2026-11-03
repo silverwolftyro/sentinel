@@ -14,11 +14,7 @@ from typing import Any, Dict, List, Tuple
 import pytest
 
 from src.core import guardian as guardian_module
-from src.core.guardian import (
-    INTERCEPT_MESSAGE,
-    Guardian,
-    ProcessController,
-)
+from src.core.guardian import INTERCEPT_MESSAGE, Guardian, ProcessController
 from src.rules.basic import SEVERITY_RED_LINE, VERDICT_DANGEROUS, RuleEngine
 
 

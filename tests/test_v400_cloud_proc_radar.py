@@ -29,10 +29,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import pytest
-from fastapi.testclient import TestClient
 
-from src.gui import server as gui_server
-from src.gui.server import create_app
+from src.core import session_server as gui_server
 from src.proc_tree import scan_process_tree
 
 logger = logging.getLogger(__name__)
@@ -143,39 +141,6 @@ def _hermetic_config(tmp_path: Path) -> str:
     return str(config)
 
 
-def _make_app(tmp_path: Path, **kwargs: Any):
-    """造一个最小可用的看板应用（带一个假的挂载工厂）。
-
-    :param tmp_path: pytest 的临时目录。
-    :param kwargs: 透传给 :func:`create_app` 的参数。
-    :return: ``(应用, 挂载工厂的调用记录)``。
-    """
-    # ⚠️ 看板自己的文件必须放在**子目录**里 ——
-    #    进程树雷达会在进程的工作目录里挑「最近改过的日志」，
-    #    看板的 watch.jsonl / alert.log 混进去会把真正的日志挤掉。
-    base = tmp_path / "app"
-    base.mkdir(parents=True, exist_ok=True)
-    watch = base / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = base / "alert.log"
-    alert.write_text("", encoding="utf-8")
-    calls: List[Dict[str, Any]] = []
-
-    def factory(info: Dict[str, Any]) -> Dict[str, Any]:
-        """假工厂：只记录调用，不真的起引擎。"""
-        calls.append(dict(info))
-        return {
-            "ok": True,
-            "alert_log_path": str(base / "attached.alerts.jsonl"),
-            "scan_callback": lambda target: {"ok": True, "counts": {}},
-            "workdir": info.get("cwd", ""),
-            "tail_runner": None,
-        }
-
-    kwargs.setdefault("attach_factory", factory)
-    kwargs.setdefault("config_path", _hermetic_config(base))
-    app = create_app(str(watch), str(alert), start_watcher=False, **kwargs)
-    return app, calls
 
 
 @pytest.fixture(autouse=True)
@@ -214,89 +179,12 @@ def _fake_process(pid: int = 4242, log_path: str = "") -> Dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# 发现接口
-# ---------------------------------------------------------------------------
-def test_发现接口返回进程树字段(tmp_path: Path, monkeypatch) -> None:
-    """``/api/discover`` 要多返回 ``processes`` / ``process_count``。"""
-    rows = [_fake_process()]
-    monkeypatch.setattr(
-        gui_server, "_scan_cloud_processes", lambda force=False: rows
-    )
-
-    app, _ = _make_app(tmp_path)
-    with TestClient(app) as client:
-        payload = client.get("/api/discover").json()
-
-    assert payload["ok"] is True
-    assert payload["process_count"] == 1
-    assert len(payload["processes"]) == 1
-    first = payload["processes"][0]
-    assert first["agent"] == "claude"
-    assert first["host_pid"] == 42
-    assert first["matched_by"] == "cmdline_name"
 
 
-def test_进程扫描失败只降级不报错(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """扫描炸了也要给一份**能看的**回答（红线 R5）。"""
-
-    def boom(force: bool = False) -> List[Dict[str, Any]]:
-        """假装扫描失败。"""
-        raise RuntimeError("psutil 炸了")
-
-    monkeypatch.setattr(gui_server, "_scan_cloud_processes", boom)
-
-    app, _ = _make_app(tmp_path)
-    with TestClient(app) as client:
-        payload = client.get("/api/discover").json()
-
-    assert payload["ok"] is True
-    assert payload["processes"] == []
-    assert payload["process_count"] == 0
 
 
-def test_已接入的进程标记为attached(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """已经挂载过的日志对应的进程要标 ``attached``。"""
-    target = tmp_path / "external.jsonl"
-    target.write_text(
-        '{"type":"turn.started","cwd":"D:\\\\work\\\\alpha"}\n',
-        encoding="utf-8",
-    )
-    rows = [_fake_process(log_path=str(target))]
-    monkeypatch.setattr(
-        gui_server, "_scan_cloud_processes", lambda force=False: rows
-    )
-
-    app, _ = _make_app(tmp_path)
-    with TestClient(app) as client:
-        client.post("/api/attach", json={"path": str(target)})
-        payload = client.get("/api/discover").json()
-
-    first = payload["processes"][0]
-    assert first["attached"] is True
-    assert first["state"] == "attached"
 
 
-def test_没接入的进程就是discovered(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """没挂载过的进程保持「已发现但运行中」状态。"""
-    rows = [_fake_process(log_path="C:/x/other.jsonl")]
-    monkeypatch.setattr(
-        gui_server, "_scan_cloud_processes", lambda force=False: rows
-    )
-
-    app, _ = _make_app(tmp_path)
-    with TestClient(app) as client:
-        payload = client.get("/api/discover").json()
-
-    first = payload["processes"][0]
-    assert first["attached"] is False
-    assert first["state"] == "discovered"
 
 
 # ---------------------------------------------------------------------------
@@ -354,93 +242,3 @@ def tree(tmp_path: Path):
         yield proc, log
     finally:
         _kill_tree(proc)
-
-
-def test_真实进程树会出现在发现结果里(tree) -> None:
-    """**父进程派生子进程** —— 看板要能看见它。
-
-    宿主（命令行带 ``webui.server``）派生出 Agent CLI
-    （可执行名 ``claude``），``/api/discover`` 必须把它列出来。
-    """
-    proc, log = tree
-    app, _ = _make_app(Path(log).parent)
-    with TestClient(app) as client:
-        payload = client.get("/api/discover").json()
-
-    rows = [
-        row
-        for row in payload["processes"]
-        if row["host_pid"] == proc.pid and row["agent"] == "claude"
-    ]
-    assert rows, (
-        "雷达没有把宿主派生的 Agent 进程列出来："
-        "{}".format(payload["processes"])
-    )
-    row = rows[0]
-    assert row["pid"] != proc.pid
-    assert row["parent_pid"] == proc.pid
-    assert row["depth"] >= 1
-    assert row["matched_by"].startswith("cmdline")
-
-
-def test_真实进程树能一键挂载(tree) -> None:
-    """扫到的进程 → 拿它的日志去挂载 → 挂完再扫要显示「已接入」。"""
-    proc, log = tree
-    app, calls = _make_app(Path(log).parent)
-    with TestClient(app) as client:
-        payload = client.get("/api/discover").json()
-        rows = [
-            row
-            for row in payload["processes"]
-            if row["host_pid"] == proc.pid and row["agent"] == "claude"
-        ]
-        assert rows, "雷达没有扫出宿主派生的 Agent 进程"
-        row = rows[0]
-        assert row["attachable"] is True
-        assert os.path.normcase(row["log_path"]) == os.path.normcase(
-            str(log)
-        )
-
-        attached = client.post(
-            "/api/attach",
-            json={
-                "path": row["log_path"],
-                "agent": row["agent"],
-                "cwd": row["cwd"],
-            },
-        ).json()
-        assert attached["ok"] is True
-
-        again = client.get("/api/discover").json()
-        rows_again = [
-            item
-            for item in again["processes"]
-            if item["pid"] == row["pid"]
-        ]
-        assert rows_again
-        assert rows_again[0]["attached"] is True
-        assert rows_again[0]["state"] == "attached"
-
-    # 挂载工厂确实拿到了进程树带过来的 agent / cwd。
-    assert calls and calls[0]["agent"] == "claude"
-
-
-# ---------------------------------------------------------------------------
-# 前端契约
-# ---------------------------------------------------------------------------
-def test_前端渲染进程树面板() -> None:
-    """看板要有「外部插件派发进程」这一块的渲染逻辑。"""
-    source = Path(STATIC_DIR, "dashboard.js").read_text(encoding="utf-8")
-    assert "renderProcesses" in source
-    assert "attach__procs" in source
-    # 一键挂载要把 agent / cwd 一起带上去。
-    assert "doAttach(" in source
-    assert 'String(item.agent || "")' in source
-    assert 'String(item.cwd || "")' in source
-
-
-def test_前端样式里有进程树条目() -> None:
-    """CSS 要有对应的类，否则渲染出来是裸的。"""
-    css = Path(STATIC_DIR, "dashboard.css").read_text(encoding="utf-8")
-    assert ".attach__procs" in css
-    assert ".attach__item--proc" in css

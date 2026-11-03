@@ -8,11 +8,7 @@ from __future__ import annotations
 import json
 import os
 
-from src.core.injector import (
-    AgentInjector,
-    InboxMessage,
-    InboxStore,
-)
+from src.core.injector import AgentInjector, InboxMessage, InboxStore
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.correction import (  # noqa: E402
+from src.core.correction import (
     COPY_LABEL_CORRECTION,
     COPY_LABEL_INTERCEPT,
     build_correction_prompt,

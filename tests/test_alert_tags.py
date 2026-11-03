@@ -17,10 +17,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from src.adapters.mcode import McodeAdapter
-from src.core.channels import (
-    TRIGGER_GUARDIAN_INTERCEPT,
-    TRIGGER_INTENT_DRIFT,
-)
+from src.core.channels import TRIGGER_GUARDIAN_INTERCEPT, TRIGGER_INTENT_DRIFT
 from src.core.engine import SentinelEngine
 from src.rules.basic import RuleEngine
 

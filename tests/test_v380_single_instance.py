@@ -216,17 +216,6 @@ class Test入口的单例拦截:
         assert code == si.ALREADY_RUNNING_EXIT_CODE
         assert calls == ["lock", "tip"]
 
-    def test_help不上锁(self, monkeypatch) -> None:
-        """★ 打包脚本的自检就是「再跑一次 ``sentinel.exe --help``」。
-
-        ⚠️ 它必须**永远**能跑通 —— 被单例锁拦下来就打包失败了。
-        """
-        monkeypatch.setattr(
-            entry,
-            "_acquire_single_instance",
-            lambda: pytest.fail("--help 不该上锁"),
-        )
-        assert entry._dispatch(["--help"]) == 0
 
     def test_version不上锁(self, monkeypatch) -> None:
         """``--version`` 同理 —— 它只是一行版本号。"""
@@ -259,47 +248,3 @@ class Test入口的单例拦截:
 
 class Test托盘销毁顺序:
     """★ 托盘图标必须在 ``os._exit`` **之前**收掉。"""
-
-    def test_退出前先收图标(self, monkeypatch) -> None:
-        """``finally`` 在 ``os._exit`` 路径上**不会跑** ——
-        所以图标必须在 ``_force_exit`` 里显式收。
-        """
-        from src.gui import server as gui_server
-
-        order: list[str] = []
-        monkeypatch.setattr(
-            gui_server, "stop_tray_icon", lambda: order.append("icon")
-        )
-        monkeypatch.setattr(
-            gui_server.sys, "stdout", io.StringIO()
-        )
-        monkeypatch.setattr(
-            gui_server.sys, "stderr", io.StringIO()
-        )
-
-        def _fake_exit(code: int = 0) -> None:
-            order.append("exit")
-
-        monkeypatch.setattr(gui_server.os, "_exit", _fake_exit)
-        gui_server._force_exit(0)
-
-        assert order == ["icon", "exit"]
-
-    def test_收图标时顺手清空句柄(self) -> None:
-        """句柄必须清空 —— 否则退出钩子会把同一个图标收两遍。"""
-        from src.gui import server as gui_server
-
-        stopped: list[object] = []
-
-        class _FakeIcon:
-            def stop(self) -> None:
-                stopped.append(self)
-
-        icon = _FakeIcon()
-        gui_server._TRAY["icon"] = icon
-        try:
-            gui_server.stop_tray_icon()
-        finally:
-            gui_server._TRAY["icon"] = None
-        assert stopped == [icon]
-        assert gui_server._TRAY.get("icon") is None

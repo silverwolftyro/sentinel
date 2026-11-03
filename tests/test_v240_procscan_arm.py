@@ -32,16 +32,9 @@ import threading
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 
 from src.core.engine import IntentTracker, SentinelEngine
-from src.gui import server as gui_server
-from src.gui.server import (
-    AlertStore,
-    EventHub,
-    Watcher,
-    create_app,
-)
+from src.core.session_server import AlertStore, EventHub, Watcher
 from src.procscan import (
     BINDABLE_CONFIDENCE,
     ProcessHit,
@@ -64,40 +57,6 @@ def _write_jsonl(path: str, lines) -> None:
             handle.write(line + "\n")
 
 
-def _make_app(tmp_path, *, factory_kwargs=None, **kwargs):
-    """造一个最小可用的看板应用（带一个假的挂载工厂）。
-
-    :param tmp_path: pytest 的临时目录。
-    :param factory_kwargs: 传给假工厂的额外字段
-        （``task_goal`` / ``process_info`` / ``arm_callback``）。
-    :param kwargs: 传给 :func:`create_app` 的参数。
-    :return: ``(app, calls)``。
-    """
-    watch = tmp_path / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = tmp_path / "alert.log"
-    alert.write_text("", encoding="utf-8")
-    calls = []
-    extra = dict(factory_kwargs or {})
-
-    def factory(info):
-        """假工厂：只记录调用，不真的起引擎。"""
-        calls.append(dict(info))
-        built = {
-            "ok": True,
-            "alert_log_path": str(tmp_path / "attached.alerts.jsonl"),
-            "scan_callback": lambda target: {"ok": True, "counts": {}},
-            "workdir": info.get("cwd", ""),
-            "tail_runner": None,
-        }
-        built.update(extra)
-        return built
-
-    kwargs.setdefault("attach_factory", factory)
-    app = create_app(
-        str(watch), str(alert), start_watcher=False, **kwargs
-    )
-    return app, calls
 
 
 # ---------------------------------------------------------------------------
@@ -167,22 +126,7 @@ def test_命令行带日志路径时能反查到PID(tmp_path):
             proc.kill()
 
 
-@pytest.mark.skipif(
-    not psutil_available(), reason="psutil 不可用，跳过真实进程反查"
-)
-def test_反查不会把自己认出来(tmp_path):
-    """哨兵自己不能出现在结果里（否则会把自己挂起）。"""
-    log = tmp_path / "self.jsonl"
-    log.write_text("", encoding="utf-8")
-    hits = gui_server._lookup_process(str(log))
-    assert hits.get("pid") != os.getpid()
 
-
-def test_反查失败时返回空字典(tmp_path):
-    """反查器不可用 / 查不到 → 空字典（调用方据此显示「未绑定进程」）。"""
-    missing = tmp_path / "nothing.jsonl"
-    result = gui_server._lookup_process(str(missing))
-    assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -205,230 +149,20 @@ class _FakeGuardian:
         return {"ok": True, "enabled": True, "target_pid": self.target_pid}
 
 
-def test_武装后守护者才挂上(monkeypatch):
-    """**只有**用户手动武装，守护者才接管那个 PID。"""
-    monkeypatch.setattr(
-        gui_server,
-        "_build_guardian",
-        lambda config_path, watch_path=None, target_pid=None: _FakeGuardian(
-            int(target_pid or 0)
-        ),
-    )
-    engine = _FakeEngine()
-    assert engine.guardian is None
-
-    result = gui_server._arm_attached_guardian(
-        engine, None, pid=4321, armed=True, label="[Codex] D:\\work"
-    )
-    assert result["ok"] is True
-    assert result["armed"] is True
-    assert engine.guardian is not None
-    assert engine.guardian.target_pid == 4321
 
 
-def test_解除武装后守护者被摘掉(monkeypatch):
-    """解除武装 → 恢复成纯只读监控。"""
-    monkeypatch.setattr(
-        gui_server,
-        "_build_guardian",
-        lambda config_path, watch_path=None, target_pid=None: _FakeGuardian(
-            int(target_pid or 0)
-        ),
-    )
-    engine = _FakeEngine()
-    gui_server._arm_attached_guardian(
-        engine, None, pid=4321, armed=True, label="x"
-    )
-    assert engine.guardian is not None
-
-    result = gui_server._arm_attached_guardian(
-        engine, None, pid=4321, armed=False, label="x"
-    )
-    assert result["ok"] is True
-    assert result["armed"] is False
-    assert engine.guardian is None
 
 
-def test_没绑定进程时拒绝武装(monkeypatch):
-    """没反查到 PID → **拒绝**武装，并说清楚原因。"""
-    monkeypatch.setattr(
-        gui_server,
-        "_build_guardian",
-        lambda *args, **kwargs: _FakeGuardian(1),
-    )
-    engine = _FakeEngine()
-    result = gui_server._arm_attached_guardian(
-        engine, None, pid=0, armed=True, label="x"
-    )
-    assert result["ok"] is False
-    assert "未绑定进程" in result["error"]
-    assert engine.guardian is None
 
 
-def test_配置里守护者关闭时拒绝武装(monkeypatch):
-    """守护者在配置里是关的 → 如实拒绝，不偷偷武装。"""
-    monkeypatch.setattr(
-        gui_server, "_build_guardian", lambda *args, **kwargs: None
-    )
-    engine = _FakeEngine()
-    result = gui_server._arm_attached_guardian(
-        engine, None, pid=4321, armed=True, label="x"
-    )
-    assert result["ok"] is False
-    assert "守护者" in result["error"]
-    assert engine.guardian is None
 
 
-def test_武装端点会切换守护者(tmp_path):
-    """``/api/sessions/{id}/arm`` 真的切换守护者的接管状态。"""
-    state = {"armed": False, "guardian": None}
-
-    def arm_callback(armed):
-        """假武装回调：记录状态。"""
-        state["armed"] = bool(armed)
-        state["guardian"] = _FakeGuardian(4321) if armed else None
-        return {
-            "ok": True,
-            "armed": bool(armed),
-            "message": "ok",
-            "_guardian": state["guardian"],
-        }
-
-    app, _calls = _make_app(
-        tmp_path,
-        factory_kwargs={
-            "arm_callback": arm_callback,
-            "process_info": {
-                "pid": 4321, "bindable": True, "confidence": 0.95,
-            },
-        },
-    )
-    client = TestClient(app)
-
-    target = tmp_path / "attached.jsonl"
-    target.write_text("", encoding="utf-8")
-    attached = client.post("/api/attach", json={"path": str(target)})
-    assert attached.status_code == 200
-    session_id = attached.json()["session"]["id"]
-
-    # 反查成功 → 会话卡片显示 PID，武装开关可用。
-    snapshot = attached.json()["session"]
-    assert snapshot["attached"] is True
-    assert snapshot["process_bound"] is True
-    assert snapshot["pid"] == 4321
-    assert snapshot["arm_available"] is True
-
-    armed = client.post(
-        "/api/sessions/{}/arm".format(session_id), json={"armed": True}
-    )
-    assert armed.status_code == 200
-    assert armed.json()["ok"] is True
-    assert state["armed"] is True
-
-    disarmed = client.post(
-        "/api/sessions/{}/arm".format(session_id), json={"armed": False}
-    )
-    assert disarmed.json()["ok"] is True
-    assert state["armed"] is False
 
 
-def test_反查失败时会话显示未绑定且不能武装(tmp_path):
-    """反查失败 → PID 为 0、``process_bound`` 为假、武装不可用。"""
-    app, _calls = _make_app(tmp_path)
-    client = TestClient(app)
-
-    target = tmp_path / "orphan.jsonl"
-    target.write_text("", encoding="utf-8")
-    attached = client.post("/api/attach", json={"path": str(target)})
-    snapshot = attached.json()["session"]
-
-    assert snapshot["attached"] is True
-    assert snapshot["process_bound"] is False
-    assert snapshot["pid"] == 0
-    assert snapshot["arm_available"] is False
-
-    armed = client.post(
-        "/api/sessions/{}/arm".format(snapshot["id"]), json={"armed": True}
-    )
-    # 挂载工厂没给 arm_callback → 明确说「不支持武装」。
-    assert armed.status_code == 400
-    assert armed.json()["ok"] is False
 
 
-# ---------------------------------------------------------------------------
-# 任务二：挂载会话的意图锚定
-# ---------------------------------------------------------------------------
-def test_手动设定目标会立刻启用滑窗机制():
-    """设定目标 → 引擎里**立刻**多出一个意图追踪器。"""
-
-    class _Engine:
-        """假引擎：记录追踪器换装。"""
-
-        def __init__(self) -> None:
-            self.intent_tracker = None
-            self.installed = []
-
-        def set_intent_tracker(self, tracker):
-            """记录换装动作。"""
-            self.installed.append(tracker)
-            self.intent_tracker = tracker
-
-    class _LLM:
-        """假模型客户端。"""
-
-        @staticmethod
-        def evaluate_drift(goal, summary):
-            return {"drift": False, "reason": "", "summary": ""}
-
-    engine = _Engine()
-    runner = gui_server.TailRunner(
-        engine,
-        "x.jsonl",
-        task_goal=gui_server.TaskGoal(),
-        drift_config={"window": 5, "threshold": 2, "enabled": True},
-        llm_client=_LLM(),
-    )
-    assert engine.intent_tracker is None
-
-    runner.apply_goal("重构 auth 模块并修复登录 bug")
-    assert engine.intent_tracker is not None
-    assert engine.intent_tracker.goal == "重构 auth 模块并修复登录 bug"
-    assert len(engine.installed) == 1
 
 
-def test_清空目标会停掉漂移检测():
-    """清空目标 → 追踪器被摘掉（界面说「停用」就得真停用）。"""
-
-    class _Engine:
-        """假引擎。"""
-
-        def __init__(self) -> None:
-            self.intent_tracker = None
-
-        def set_intent_tracker(self, tracker):
-            """换装。"""
-            self.intent_tracker = tracker
-
-    class _LLM:
-        """假模型客户端。"""
-
-        @staticmethod
-        def evaluate_drift(goal, summary):
-            return {"drift": False, "reason": "", "summary": ""}
-
-    engine = _Engine()
-    runner = gui_server.TailRunner(
-        engine,
-        "x.jsonl",
-        task_goal=gui_server.TaskGoal(),
-        drift_config={"window": 5, "threshold": 2, "enabled": True},
-        llm_client=_LLM(),
-    )
-    runner.apply_goal("修 bug")
-    assert engine.intent_tracker is not None
-
-    runner.apply_goal("")
-    assert engine.intent_tracker is None
 
 
 def test_换装追踪器会接上漂移结论回调():
@@ -465,37 +199,8 @@ def test_换装追踪器会接上漂移结论回调():
     assert tracker.on_result == engine._on_drift_result
 
 
-def test_挂载会话有自己的任务目标(tmp_path):
-    """挂载会话的任务目标是**独立**的一份，互不干扰。"""
-    goal_a = gui_server.TaskGoal()
-    goal_b = gui_server.TaskGoal()
-    goal_a.set("A 的目标")
-    assert goal_b.get() == ""
-    assert goal_a.get() == "A 的目标"
 
 
-def test_设定会话目标会同步监控目标面板(tmp_path):
-    """设定目标 → 「当前监控目标」面板要跟着变（不然像没生效）。"""
-    app, _calls = _make_app(tmp_path)
-    client = TestClient(app)
-
-    target = tmp_path / "attached.jsonl"
-    target.write_text("", encoding="utf-8")
-    attached = client.post("/api/attach", json={"path": str(target)})
-    session_id = attached.json()["session"]["id"]
-
-    response = client.post(
-        "/api/sessions/{}/task_goal".format(session_id),
-        json={"goal": "重构 auth 模块"},
-    )
-    assert response.status_code == 200
-    assert response.json()["goal"] == "重构 auth 模块"
-
-    watch = client.get(
-        "/api/sessions/{}/watch_target".format(session_id)
-    )
-    assert watch.json()["goal"] == "重构 auth 模块"
-    assert watch.json()["goal_source"] == "explicit"
 
 
 # ---------------------------------------------------------------------------

@@ -46,7 +46,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.briefing import (  # noqa: E402
+from src.core.briefing import (
     BriefingStats,
     build_briefing_summary,
     render_markdown,

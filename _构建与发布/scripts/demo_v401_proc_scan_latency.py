@@ -115,7 +115,7 @@ def _demo_circuit_breaker() -> Dict[str, Any]:
     :return: 熔断演示结果。
     """
     from src import proc_tree
-    from src.gui import server as gui_server
+    from src.core import session_server as gui_server
 
     gate = __import__("threading").Event()
     entered = __import__("threading").Event()

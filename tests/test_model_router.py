@@ -20,11 +20,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.llm.base import DriftResult, Explanation, LLMProvider  # noqa: E402
-from src.llm.router import (  # noqa: E402
-    ESCALATE_DRIFT,
-    ESCALATE_RED_LINE,
-    ModelRouter,
-)
+from src.llm.router import ESCALATE_DRIFT, ESCALATE_RED_LINE, ModelRouter
 
 
 class _FakeProvider(LLMProvider):

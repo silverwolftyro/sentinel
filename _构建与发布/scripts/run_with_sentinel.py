@@ -730,6 +730,56 @@ def _resolve_agent_pid(
         time.sleep(0.2)
 
 
+class _WatchTarget:
+    """「当前监控目标」的快照持有者（v5.0.0）。
+
+    ⚠️ v5.0.0 之前这个类住在 ``src/gui/server.py`` 里 ——
+    它存在的唯一理由是**给面板显示一行字**。
+    面板整体剥离之后，它只剩一个用途：**让启动器自己知道
+    这一路的目标是什么**（自动锚定会改它）。
+
+    所以这里给一个**等价的本地实现**：同样的构造参数、
+    同样的 ``snapshot()`` / ``set_goal()``，
+    但**不依赖任何前端模块**。
+    """
+
+    def __init__(
+        self,
+        agent: str = "",
+        goal: str = "",
+        goal_source: str = "none",
+    ) -> None:
+        """建快照。
+
+        :param agent: Agent 类型。
+        :param goal: 初始目标。
+        :param goal_source: 目标来源（``config`` / ``auto`` / ``none``）。
+        """
+        self.agent = str(agent or "")
+        self._goal = str(goal or "")
+        self._goal_source = str(goal_source or "none")
+
+    def snapshot(self) -> Dict[str, Any]:
+        """取快照。
+
+        :return: 快照字典。
+        """
+        return {
+            "agent": self.agent,
+            "goal": self._goal,
+            "goal_source": self._goal_source,
+        }
+
+    def set_goal(self, goal: str, source: str = "auto") -> None:
+        """设置目标。
+
+        :param goal: 目标文本。
+        :param source: 目标来源。
+        """
+        self._goal = str(goal or "")
+        self._goal_source = str(source or "none")
+
+
 def _sync_watch_target(watch_target: Any, intent_tracker: Any) -> None:
     """把追踪器的目标状态同步到看板的「当前监控目标」快照。
 
@@ -1648,7 +1698,6 @@ class AgentSession:
             SentinelEngine,
         )
         from src.core.notifier import Notifier
-        from src.gui.server import WatchTarget
         from src.llm.factory import build_routing_provider
 
         args = self.args
@@ -1743,7 +1792,7 @@ class AgentSession:
         except Exception as exc:  # noqa: BLE001 —— 看门狗失败不阻断审查
             _say(f"引擎心跳看门狗启动失败（{exc}），不影响审查。")
 
-        self.watch_target = WatchTarget(
+        self.watch_target = _WatchTarget(
             agent=self.profile.name,
             goal=str(config.get("task_goal") or ""),
             goal_source="config" if config.get("task_goal") else "none",
@@ -2106,96 +2155,8 @@ def _build_rule_engine(config: Dict[str, Any]) -> Any:
     return RuleEngine(config)
 
 
-def _run_dashboard(server: Any, host: str, port: int) -> None:
-    """看板线程主体。
-
-    端口被占用这类异常必须在这里**转成人话** ——
-    直接往外抛，用户看到的是一屏红色异常栈，
-    而他真正需要知道的只有一句「端口被占用，换一个」。
-
-    :param server: uvicorn Server 实例。
-    :param host: 监听地址。
-    :param port: 监听端口。
-    """
-    from src.console import print_port_busy
-
-    try:
-        server.run()
-    except OSError:
-        print_port_busy(host, port)
-    except Exception as exc:  # noqa: BLE001 —— 看板异常不影响审查
-        _say(f"看板异常退出（{type(exc).__name__}: {exc}）。")
 
 
-def _start_dashboard(
-    guardian: Any,
-    watch_path: str,
-    alert_log_path: str,
-    host: str,
-    port: int,
-    watch_target: Any = None,
-    session_specs: Optional[List[Any]] = None,
-    briefing_callback: Any = None,
-    inject_callback: Any = None,
-    rollback_callback: Any = None,
-    resume_callback: Any = None,
-    plan_callback: Any = None,
-    safe_point_service: Any = None,
-    workdir: str = "",
-) -> Any:
-    """在本进程里把看板跑起来（守护者与引擎是**同一个**实例）。
-
-    同进程是关键 —— 看板上的【放行并忽略】按钮恢复的，
-    就是引擎挂起的那个 Agent 进程。
-
-    :param guardian: 守护者实例（单路模式用）。
-    :param watch_path: 原始日志路径（看板实时显示）。
-    :param alert_log_path: 告警日志路径。
-    :param host: 监听地址。
-    :param port: 监听端口。
-    :param watch_target: 「当前监控目标」快照。
-    :param session_specs: 多路会话描述；给了就走多路中枢模式。
-    :param briefing_callback: 「生成晨报」回调（v1.2.0，单路模式用）。
-    :param inject_callback: 「直接发送给 Agent」回调（v2.0.0）。
-    :param rollback_callback: 「一键回滚至拦截点」回调（v2.0.0）。
-    :param resume_callback: 「回滚并重试」回调（v2.1.0）。
-    :param safe_point_service: 安全点服务（v2.0.0）。
-    :param workdir: Agent 的工作目录（v2.0.0）。
-    :return: uvicorn Server 实例。
-    """
-    import uvicorn
-
-    from src.gui.server import create_app
-
-    if session_specs:
-        app = create_app(
-            sessions=session_specs,
-            scan_callback=None,
-            host=host,
-            port=port,
-        )
-    else:
-        app = create_app(
-            watch_path,
-            alert_log_path,
-            scan_callback=None,
-            guardian_callback=guardian,
-            watch_target=watch_target,
-            briefing_callback=briefing_callback,
-            # 控制中枢（v2.0.0）
-            inject_callback=inject_callback,
-            rollback_callback=rollback_callback,
-            resume_callback=resume_callback,
-            plan_callback=plan_callback,
-            safe_point_service=safe_point_service,
-            workdir=workdir,
-            host=host,
-            port=port,
-        )
-    config = uvicorn.Config(
-        app, host=host, port=port, log_level="warning", access_log=False
-    )
-    return uvicorn.Server(config)
 
 
 def _resolve_config_path(explicit: str) -> str:
@@ -2441,17 +2402,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     raw_dir = os.path.dirname(os.path.abspath(args.raw_log))
 
     # ---- 端口占用：**在启动 Agent 之前**就查清楚 -----------------------
-    # 看板起不来不影响审查（终端照样出告警），但用户得**马上**知道
-    # 「端口被占了」—— 不然等 Agent 跑完了才发现看板是空的，很难受。
-    dashboard_enabled = not args.no_gui
-    if dashboard_enabled:
-        from src.console import port_is_free, print_port_busy
-
-        if not port_is_free(args.host, args.port):
-            print_port_busy(args.host, args.port)
-            _say("看板将不启动，本次只在终端审查。")
-            _say(f"请改用别的端口，例如：--port {args.port + 1}")
-            dashboard_enabled = False
+    # v5.0.0：面板已整体剥离，哨兵是**无头守护进程** ——
+    # 终端里审查，不需要占端口，也就不会「端口被占」。
+    # 「看板端口」这个概念连同它的检查一起去掉了。
+    dashboard_enabled = False
 
     # ---- v3.8.0：单例拦截（防「双击两次出两个托盘」）--------------------
     #
@@ -2554,136 +2508,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 半夜改了 config.yaml 不用重启哨兵 —— 规则引擎会**原地换掉**。
     _start_hot_reloader(config, _resolve_config_path(args.config), started)
 
-    # ---- 看板（守护者与引擎同进程，按钮才能恢复 Agent） ----
+    # ---- 面板已剥离（v5.0.0）：只有终端输出 ----
+    #
+    # ⚠️ 以前这里会起一个 FastAPI 看板（+ uvicorn + SSE + 托盘图标）。
+    # v5.0.0 把那 926 KB 的前端**整体剥离**了 —— 哨兵是
+    # **无头守护进程**，告警只走「终端 + 外部回调」两条路。
     server = None
-    if dashboard_enabled:
-        from src.console import (
-            announce_ready_when_up,
-            print_banner,
-        )
-        try:
-            if multi:
-                from src.gui.server import SessionSpec
+    from src.console import print_greeting
 
-                specs = [
-                    SessionSpec(
-                        id=item.plan.id,
-                        label=item.plan.label,
-                        agent=item.profile.name,
-                        watch_path=item.raw_log,
-                        alert_log_path=item.alert_log,
-                        guardian_callback=item.guardian,
-                        watch_target=item.watch_target,
-                        briefing_callback=item.briefing_callback,
-                        # 控制中枢（v2.0.0）——
-                        # 启动器握着 Agent 的管道，所以由它来注入；
-                        # 看板只做转发。
-                        inject_callback=item.inject,
-                        rollback_callback=item.rollback,
-                        # v2.1.0：一键复活（回滚 + 注入 + 重拉 Agent）——
-                        # 同样由启动器执行，因为它手上有 Agent 的进程。
-                        resume_callback=item.resume,
-                        plan_callback=item.resume_plan,
-                        safe_point_service=item.safe_point_service,
-                        workdir=item.workdir,
-                    )
-                    for item in started
-                ]
-                server = _start_dashboard(
-                    None,
-                    "",
-                    "",
-                    args.host,
-                    args.port,
-                    session_specs=specs,
-                )
-            else:
-                only = started[0]
-                server = _start_dashboard(
-                    only.guardian,
-                    only.raw_log,
-                    only.alert_log,
-                    args.host,
-                    args.port,
-                    watch_target=only.watch_target,
-                    briefing_callback=only.briefing_callback,
-                    # 控制中枢（v2.0.0）
-                    inject_callback=only.inject,
-                    rollback_callback=only.rollback,
-                    # v2.1.0：一键复活
-                    resume_callback=only.resume,
-                    plan_callback=only.resume_plan,
-                    safe_point_service=only.safe_point_service,
-                    workdir=only.workdir,
-                )
-            threading.Thread(
-                target=_run_dashboard,
-                args=(server, args.host, args.port),
-                name="sentinel-dashboard",
-                daemon=True,
-            ).start()
-            # ⚠️ v3.4.0：**托盘图标**（右下角常驻）——
-            #
-            # 用户实测最痛的一条是「找不到退出的地方」。
-            # 托盘给了他们一个**随时能按**的退出键：
-            # 右键 →【彻底退出】。
-            #
-            # ⚠️ 托盘是**可选**的 —— pystray / Pillow 没装就不出图标，
-            #    哨兵其它功能一点不受影响（红线 R5）。
-            try:
-                from src.gui.server import (
-                    bind_shutdown_server,
-                    install_shutdown_console_handler,
-                    register_shutdown_hook,
-                    start_tray_icon,
-                )
-
-                start_tray_icon(args.host, args.port)
-                # ⚠️ v3.8.0：把**自己**建的 uvicorn 绑给退出协调器 ——
-                #
-                # 托盘的【彻底退出】靠它停机。之前这条路径
-                # **没有绑**，所以托盘退出只能等 Agent 线程自己 unwind ——
-                # 表现就是「点了退出，窗口半天不关」。
-                bind_shutdown_server(server)
-                # ⚠️ v3.8.0：接管模式也要装**关窗处理器** ——
-                #
-                # v3.4.0 只在 ``src.gui.server.main()`` 里装过，
-                # 接管模式绕开了那个函数 —— 于是「关掉黑框」
-                # 在接管模式下**仍然留下幽灵进程**。
-                install_shutdown_console_handler()
-                # ⚠️ v3.4.0：退出时把**自己拉起的** Agent 收掉 ——
-                #
-                # 哨兵自己启动的 Agent 不收的话会变成孤儿，
-                # 在后台继续跑而用户完全不知情。
-                #
-                # ⚠️ 雷达挂载进来的 Agent **不动** ——
-                #    那是用户自己的进程（红线 R6）。
-                register_shutdown_hook(
-                    lambda reason: _terminate_agent_trees(started)
-                )
-            except Exception as exc:  # noqa: BLE001 —— 托盘失败不影响审查
-                _say(
-                    "托盘图标不可用（{}: {}），"
-                    "可以用看板右上角的【关闭哨兵】退出。".format(
-                        type(exc).__name__, exc
-                    )
-                )
-            print_banner()
-            # 就绪提示 + 自动开浏览器放在后台线程里做 ——
-            # 只有服务**真的**能连上了才敢说「已就绪」。
-            announce_ready_when_up(
-                args.host,
-                args.port,
-                version=_raw_version(),
-                open_browser=not args.no_browser,
-            )
-        except Exception as exc:  # noqa: BLE001 —— 看板失败不影响审查
-            _say(f"看板启动失败（{type(exc).__name__}: {exc}），继续终端审查。")
-    else:
-        # 没有看板 —— 审查**已经在跑**了，这就是「就绪」的时刻（v3.0.0）。
-        from src.console import print_greeting
-
-        print_greeting(_raw_version())
+    print_greeting(_raw_version())
 
     # ---- 自动锚定：把用户的原始请求喂进去 ----
     for item in started:
@@ -2739,17 +2572,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             _say("收到 Ctrl+C，关闭看板。")
     if server is not None:
         server.should_exit = True
-
-    # ⚠️ v3.8.0：托盘图标必须收掉 ——
-    #
-    # 进程退出时 Explorer 会把图标收走，但那要等进程**真的死透**；
-    # 明确收一次更干净 —— 收尾的这几秒里不会留下一个点不动的死图标。
-    try:
-        from src.gui.server import stop_tray_icon
-
-        stop_tray_icon()
-    except Exception as exc:  # noqa: BLE001 —— 收尾失败不影响退出
-        _say(f"收尾托盘图标失败：{exc}")
 
     total_alerts = 0
     for item in started:

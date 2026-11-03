@@ -22,18 +22,13 @@
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
 
-import pytest
 import yaml
-from fastapi.testclient import TestClient
 
 from src.config_loader import ensure_config_defaults
 from src.core.engine import SentinelEngine
-from src.gui.server import create_app
 from src.llm.cascade import (
     CASCADE_STATUS_BRIDGED,
     CASCADE_STATUS_SINGLE,
@@ -57,24 +52,6 @@ def _read(*parts: str) -> str:
     return (ROOT.joinpath(*parts)).read_text(encoding="utf-8")
 
 
-def _make_app(tmp_path: Path, **kwargs: Any):
-    """造一个指向临时目录的应用（默认不启动后台线程）。"""
-    watch = tmp_path / "agent.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert_log = tmp_path / "alerts.log"
-    alert_log.write_text("", encoding="utf-8")
-    config = tmp_path / "config.yaml"
-    config.write_text(
-        yaml.safe_dump({"llm": {"cascade": {"enabled": True}}}, allow_unicode=True),
-        encoding="utf-8",
-    )
-    kwargs.setdefault("config_path", str(config))
-    return create_app(
-        str(watch),
-        str(alert_log),
-        start_watcher=False,
-        **kwargs,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -569,193 +546,24 @@ class TestEnsureConfigDefaults:
 class TestRulesApi:
     """``/api/rules`` 一族。"""
 
-    def test_规则清单接口(self, tmp_path: Path):
-        """GET 返回清单 + 开关 + 策略。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/rules").json()
-        assert data["ok"] is True
-        assert len(data["rules"]) == (
-            DANGEROUS_COUNT + CATASTROPHIC_COUNT + 1
-        )
-        assert data["l1_action"] == "red_line_only"
-        assert set(data["l1_action_labels"]) == {
-            "red_line_only",
-            "suspend",
-            "alert",
-            "escalate",
-        }
 
-    def test_关闭一条规则后接口反映出来(self, tmp_path: Path):
-        """POST 关掉一条 ⇒ GET 里那条的 enabled 变成 false。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            target = client.get("/api/rules").json()["rules"][0]["id"]
-            client.post("/api/rules", json={"disabled": [target]})
-            data = client.get("/api/rules").json()
-        row = [item for item in data["rules"] if item["id"] == target][0]
-        assert row["enabled"] is False
 
-    def test_降级为仅记录(self, tmp_path: Path):
-        """POST 降级 ⇒ action 变成 log。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            target = client.get("/api/rules").json()["rules"][0]["id"]
-            client.post("/api/rules", json={"log_only": [target]})
-            data = client.get("/api/rules").json()
-        row = [item for item in data["rules"] if item["id"] == target][0]
-        assert row["action"] == "log"
-        assert row["enabled"] is True
 
-    def test_改拦截策略(self, tmp_path: Path):
-        """POST 改策略 ⇒ GET 立刻反映。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            client.post("/api/rules", json={"l1_action": "suspend"})
-            data = client.get("/api/rules").json()
-        assert data["l1_action"] == "suspend"
 
-    def test_红线类别联动(self, tmp_path: Path):
-        """⚠️ 红线类别：关掉一个类别 ⇒ 对应规则的 enabled 变成 false。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            client.post(
-                "/api/rules",
-                json={"categories": ["root_delete", "mass_delete"]},
-            )
-            data = client.get("/api/rules").json()
-        rows = {
-            item["id"]: item
-            for item in data["rules"]
-            if item["kind"] == "catastrophic"
-        }
-        assert rows["catastrophic.root_delete"]["enabled"] is True
-        assert rows["catastrophic.disk_wipe"]["enabled"] is False
 
-    def test_导出JSON(self, tmp_path: Path):
-        """导出 JSON ⇒ 能被解析回规则数组。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/rules/export?format=json").json()
-        assert data["ok"] is True
-        assert data["filename"].endswith(".json")
-        parsed = json.loads(data["text"])
-        assert len(parsed) >= DANGEROUS_COUNT
 
-    def test_导出YAML(self, tmp_path: Path):
-        """导出 YAML ⇒ 能被 YAML 解析。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/rules/export?format=yaml").json()
-        assert data["ok"] is True
-        assert data["filename"].endswith(".yaml")
-        parsed = yaml.safe_load(data["text"])
-        assert isinstance(parsed, list)
 
-    def test_导入自定义规则(self, tmp_path: Path):
-        """导入一份自定义规则 ⇒ 出现在清单里。"""
-        app = _make_app(tmp_path)
-        payload = json.dumps(
-            [
-                {
-                    "id": "custom.demo",
-                    "name": "演示规则",
-                    "pattern": "demo",
-                    "level": "warn",
-                    "kind": "dangerous",
-                }
-            ],
-            ensure_ascii=False,
-        )
-        with TestClient(app) as client:
-            response = client.post("/api/rules/import", json={"text": payload})
-            data = response.json()
-        assert data["ok"] is True
-        assert "custom.demo" in [item["id"] for item in data["rules"]]
 
-    def test_导入坏文本不炸(self, tmp_path: Path):
-        """坏文本 ⇒ 400 + 错误说明，**不能** 500。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.post("/api/rules/import", json={"text": "坏文本"})
-        assert response.status_code == 400
-        assert response.json()["ok"] is False
 
 
 class TestPresentationApi:
     """``/api/presentation`` 与流水线开关。"""
 
-    def test_默认档位(self, tmp_path: Path):
-        """没配过 ⇒ 40 / 60。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/presentation").json()
-        assert data["ok"] is True
-        assert data["log_compression"] == 40
-        assert data["audit_compression"] == 60
 
-    def test_档位能被夹进0到100(self, tmp_path: Path):
-        """越界的值必须被夹住。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            client.post(
-                "/api/config",
-                json={
-                    "presentation": {
-                        "log_compression": 999,
-                        "audit_compression": -50,
-                    }
-                },
-            )
-            data = client.get("/api/presentation").json()
-        assert data["log_compression"] == 100
-        assert data["audit_compression"] == 0
 
-    def test_配置接口也带呈现档位(self, tmp_path: Path):
-        """``/api/config`` 里也有 ``presentation``。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/config").json()
-        assert "presentation" in data
 
-    def test_流水线开关能存能读(self, tmp_path: Path):
-        """L1/L2/L3 开关与桥接开关存得进去、读得回来。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            client.post(
-                "/api/config",
-                json={
-                    "rules": {"enabled": False, "l1_action": "alert"},
-                    "cascade": {
-                        "enabled": True,
-                        "l2": {"enabled": False},
-                        "l3": {"enabled": True},
-                        "bridge_l1_to_l3": True,
-                    },
-                },
-            )
-            data = client.get("/api/config").json()
-        assert data["rules"]["enabled"] is False
-        assert data["rules"]["l1_action"] == "alert"
-        assert data["cascade"]["l2"]["enabled"] is False
-        assert data["cascade"]["l3"]["enabled"] is True
-        assert data["cascade"]["bridge_l1_to_l3"] is True
 
-    def test_流水线页面能打开(self, tmp_path: Path):
-        """``/settings/pipeline`` 必须真的能渲染。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.get("/settings/pipeline")
-        assert response.status_code == 200
-        assert "呈现与摘要" in response.text
 
-    def test_规则页面能打开(self, tmp_path: Path):
-        """``/settings/rules`` 必须真的能渲染。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.get("/settings/rules")
-        assert response.status_code == 200
-        assert "规则" in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -764,122 +572,19 @@ class TestPresentationApi:
 class TestFrontendContract:
     """看板、设置页与路由的前端契约。"""
 
-    def test_看板没有档位滑条(self):
-        """⚠️ 主看板必须**干净** —— 滑条整条移走了。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert 'id="log-scale"' not in html
-        assert "log-scale__slider" not in html
-
-    def test_看板样式里也没有滑条(self):
-        """CSS 里的滑条样式也要清掉 —— 留着就是死代码。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert ".log-scale__slider" not in css
-        assert ".log-line--action" in css
-
-    def test_看板从服务端读档位(self):
-        """档位只能来自 ``/api/presentation``。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert '"/api/presentation"' in js
-        assert "LOG_SCALE_STORAGE_KEY" not in js
-
-    def test_呈现与摘要卡片有两个滑条(self):
-        """设置页有两条 0-100 的滑条。"""
-        html = _read("src", "gui", "templates", "settings_pipeline.html")
-        assert 'id="presentation-log-compression"' in html
-        assert 'id="presentation-audit-compression"' in html
-        assert html.count('max="100"') >= 2
-
-    def test_流水线页有五个开关(self):
-        """L1 / L2 / L3 三个独立开关 + 桥接开关 + L1 总开关。"""
-        html = _read("src", "gui", "templates", "settings_pipeline.html")
-        for element_id in (
-            "pipeline-l1-enabled",
-            "pipeline-l2-enabled",
-            "pipeline-l3-enabled",
-            "pipeline-bridge-l1-to-l3",
-            "pipeline-cascade-enabled",
-        ):
-            assert f'id="{element_id}"' in html
-
-    def test_规则页有表格与导入导出(self):
-        """规则表 + 导入 + 导出。"""
-        html = _read("src", "gui", "templates", "settings_rules.html")
-        assert 'id="rules-table-body"' in html
-        assert 'id="rules-export-json"' in html
-        assert 'id="rules-export-yaml"' in html
-        assert 'id="rules-import-button"' in html
-        assert 'id="rules-import-text"' in html
-        assert 'id="rules-export-text"' in html
-
-    def test_模型路由页不再有级联总开关(self):
-        """⚠️ 不能留**死控件** —— 级联总开关搬去了流水线页。"""
-        html = _read("src", "gui", "templates", "settings_llm.html")
-        assert 'id="cascade-enabled"' not in html
-        assert "/settings/pipeline" in html
-
-    def test_路由表里有流水线页(self):
-        """前端路由要知道这个页面。"""
-        js = _read("src", "gui", "static", "router.js")
-        assert '"/settings/pipeline"' in js
-
-    def test_子页都暴露init与destroy(self):
-        """子页必须能装能拆 —— 不拆的话离开页面还在轮询。"""
-        for name in ("settings_rules.js", "settings_pipeline.js"):
-            js = _read("src", "gui", "static", name)
-            assert "window.SentinelPage" in js
-            assert "init" in js
-            assert "destroy" in js
-
-    def test_档位边界两处一致(self):
-        """⚠️ 看板与设置页的分段边界必须**一字不差**。"""
-        pipeline = _read("src", "gui", "static", "settings_pipeline.js")
-        dashboard = _read("src", "gui", "static", "dashboard.js")
-        for boundary in ("30", "69", "99", "100"):
-            assert boundary in pipeline
-        assert "var LOG_SCALE_CODE_MAX = 30;" in dashboard
-        assert "var LOG_SCALE_SUMMARY_MIN = 70;" in dashboard
-        assert "var LOG_SCALE_EXTREME = 100;" in dashboard
-        assert "var AUDIT_SCALE_THINKING_MAX = 39;" in dashboard
-        assert "var AUDIT_SCALE_CONCLUSION_MIN = 70;" in dashboard
-        assert "var AUDIT_SCALE_EXTREME_MIN = 90;" in dashboard
 
 
-# ---------------------------------------------------------------------------
-# 七、前端行为（Node 夹具）
-# ---------------------------------------------------------------------------
-def test_前端极限摘要行为():
-    """Node 在 → 跑夹具；不在 → 跳过（Node 不是运行依赖）。"""
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("本机没有 Node，跳过前端行为测试")
-    harness = ROOT / "tests" / "fixtures" / "v370_frontend_harness.js"
-    result = subprocess.run(
-        [node, str(harness)],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "通过" in result.stdout
 
 
-def test_旧版前端行为没有退化():
-    """v3.6.0 的用例也必须全过 —— 新功能不许把旧契约顶掉。"""
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("本机没有 Node，跳过前端行为测试")
-    harness = ROOT / "tests" / "fixtures" / "v360_frontend_harness.js"
-    result = subprocess.run(
-        [node, str(harness)],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+
+
+
+
+
+
+
+
+
 
 
 # ---------------------------------------------------------------------------

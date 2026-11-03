@@ -13,11 +13,7 @@ import time
 
 import pytest
 
-from src.core.hotreload import (
-    RELOAD_MESSAGE,
-    ConfigWatcher,
-    RuleHotReloader,
-)
+from src.core.hotreload import RELOAD_MESSAGE, ConfigWatcher, RuleHotReloader
 from src.rules.basic import RuleEngine
 
 

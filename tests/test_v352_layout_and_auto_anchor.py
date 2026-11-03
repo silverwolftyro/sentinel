@@ -151,115 +151,17 @@ class TestMiddlePanelLayout:
         """
         return _read("src", "gui", "static", "dashboard.css")
 
-    def test_告警面板是Flex纵向容器(self):
-        """``display: flex; flex-direction: column;`` 必须写死。"""
-        block = _css_rule(self._css(), ".panel--alerts")
-        assert "display: flex;" in block
-        assert "flex-direction: column;" in block
-        assert "min-height: 0;" in block
 
-    def test_上半告警区吃掉剩余高度并自己滚(self):
-        """任务书原文：``flex: 1; overflow-y: auto; min-height: 0;``。"""
-        block = _css_rule(self._css(), ".panel--alerts .panel__body")
-        assert re.search(r"flex:\s*1\b", block)
-        assert "min-height: 0;" in block
-        assert "overflow-y: auto;" in block
 
-    def test_流水区不再是绝对定位(self):
-        """**绝不能**再有 ``position: absolute`` —— 那是重叠的根源。"""
-        block = _css_rule(self._css(), ".live-audit")
-        assert "position: absolute" not in block
-        assert "position: fixed" not in block
-        assert "position: static;" in block
 
-    def test_流水区不被压缩且有固定高度(self):
-        """任务书原文：``flex-shrink: 0`` + 固定高度（200px 或 30vh）。
 
-        ⚠️ v3.6.0 改了**机制**，没改**意图** ——
-        高度改由 CSS 变量 ``--audit-h`` 驱动（用户可以用拖拽条改），
-        默认值仍然钉在 200px；``max-height: 30vh`` 被**刻意去掉**，
-        因为写死的上限会在大屏上把用户拖出来的比例截断。
-        """
-        css = self._css()
-        block = _css_rule(css, ".live-audit")
-        assert re.search(r"flex:\s*0\s+0\s+auto", block)
-        assert re.search(r"height:\s*var\(--audit-h\)", block)
-        # 默认值仍钉在中间面板上（变量的宿主）。
-        alerts = _css_rule(css, ".panel--alerts")
-        assert re.search(r"--audit-h:\s*200px", alerts)
-        # 刻意不再写死 30vh 上限（v3.6.0 起的拖拽需要它）。
-        assert "max-height: 30vh;" not in block
 
-    def test_流水行自己滚(self):
-        """流水区内部自带滚动 —— 否则新行会把面板撑破。"""
-        block = _css_rule(self._css(), ".live-audit__lines")
-        assert "flex: 1;" in block
-        assert "min-height: 0;" in block
-        assert "overflow-y: auto;" in block
 
-    def test_旧的让位内边距已经去掉(self):
-        """``padding-bottom: 182px`` 是为绝对定位的流水层预留的 —— 没了。"""
-        css = self._css()
-        assert "padding-bottom: 182px" not in css
-        block = _css_rule(css, ".panel--alerts .panel__body")
-        assert "padding-bottom: 12px;" in block
 
-    def test_标题条不再靠z索引压住流水(self):
-        """流水标题不再需要「爬到别人上面」—— 各安其位。"""
-        css = self._css()
-        head = _css_rule(css, ".live-audit__head")
-        assert "z-index" not in head
-        assert "position: absolute" not in head
 
-    def test_告警卡片不再靠z索引压住流水(self):
-        """卡片也不再有 ``z-index: 2`` —— 中间面板里不该有层级打架。"""
-        css = self._css()
-        card = _css_rule(css, ".alert-card")
-        assert "z-index" not in card
-        # 中间面板这块不许再出现任何 z-index。
-        alerts_block = css.split(".panel--alerts {", 1)[1].split("\n}", 1)[0]
-        assert "z-index" not in alerts_block
 
-    def test_流水区不再拦截指针事件(self):
-        """它现在是**正常的一行**，必须能被点、能被滚。"""
-        block = _css_rule(self._css(), ".live-audit")
-        assert "pointer-events: none" not in block
 
-    def test_窄屏下流水区要收窄(self):
-        """760px 断点下面板最小高度只有 260px，流水区得让位。
 
-        ⚠️ v3.6.0 起改的是**变量**而不是 ``.live-audit`` 本体 ——
-        窄屏把 ``--audit-h`` 压到 140px，高度自然就窄了。
-        """
-        mobile = _css_media(self._css(), "max-width: 760px")
-        assert ".panel--alerts {" in mobile
-        block = _css_block(mobile, ".panel--alerts")
-        assert re.search(r"--audit-h:\s*140px", block)
-
-    def test_HTML结构里流水在分隔条上方(self):
-        """DOM 顺序必须和 Flex 顺序一致。
-
-        ⚠️ v3.6.1 **改过顺序** ——
-           v3.5.2~v3.6.0 是「标题 → 告警列表 → 分隔条 → 流水」，
-           流水区被面板底边钉死，分隔条挂在它**动不了**的上沿上，
-           于是往下拖时把手反向跑（详见 tests/test_v361_drag_direction_fix.py）。
-           现在流水区挪到分隔条**上方**：
-           流水 → 分隔条 → 标题 → 告警列表。
-        """
-        html = _read("src", "gui", "templates", "dashboard.html")
-        block = html.split('class="panel panel--alerts"', 1)[1]
-        live = block.index('class="live-audit"')
-        resizer = block.index('id="resizer-audit"')
-        head = block.index('class="panel__head"')
-        body = block.index('class="panel__body"')
-        assert live < resizer < head < body
-
-    def test_旧的背景层注释已经改掉(self):
-        """注释不能还在教人「卡片压流水」—— 那是旧设计。"""
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert "盖在它上面" not in html
-        css = self._css()
-        assert "告警卡片会盖在流水上面" not in css
 
 
 # ---------------------------------------------------------------------------
@@ -661,22 +563,11 @@ class TestSessionCarriesGoal:
 class TestServerAttachUsesChain:
     """挂载会话必须走「日志 → 命令行 → 适配器」这条链。"""
 
-    def test_服务端有三级回退的入口(self):
-        """``_resolve_attached_goal`` 必须存在。"""
-        from src.gui import server
 
-        assert hasattr(server, "_resolve_attached_goal")
-
-    def test_挂载流程调用的是新链路(self):
-        """``_attach_one`` 里不能再直接调旧的那一级。"""
-        from src.gui import server
-
-        source = Path(server.__file__).read_text(encoding="utf-8")
-        assert "_resolve_attached_goal(path, agent, cwd)" in source
 
     def test_日志里的目标能被服务端取到(self, tmp_path):
         """端到端：日志 → ``_resolve_attached_goal`` → 任务目标。"""
-        from src.gui.server import _resolve_attached_goal
+        from src.core.session_server import _resolve_attached_goal
 
         path = _write_jsonl(tmp_path / "messages.jsonl", [
             {
@@ -691,7 +582,7 @@ class TestServerAttachUsesChain:
 
     def test_系统噪声不会被服务端当成目标(self, tmp_path):
         """噪声 → 服务端也必须返回空串。"""
-        from src.gui.server import _resolve_attached_goal
+        from src.core.session_server import _resolve_attached_goal
 
         path = _write_jsonl(tmp_path / "messages.jsonl", [
             {
@@ -711,18 +602,7 @@ class TestServerAttachUsesChain:
 class TestRadarShowsGoal:
     """挂载之前就要告诉用户「不用你手敲」。"""
 
-    def test_前端渲染了自动提取的目标(self):
-        """雷达条目里要有那一行。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "attach__goal" in js
-        assert "item.task_goal" in js
-        assert "[自动提取]" in js
 
-    def test_样式里有那一行(self):
-        """样式也得有 —— 不然就是一行没样式的裸文字。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert ".attach__goal {" in css
-        assert ".attach__goal-tag {" in css
 
 
 # ---------------------------------------------------------------------------

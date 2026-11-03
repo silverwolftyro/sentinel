@@ -32,10 +32,7 @@ import json
 import os
 from typing import Dict, List
 
-from src.core.engine import (
-    build_compressed_summary,
-    build_window_summary,
-)
+from src.core.engine import build_compressed_summary, build_window_summary
 from src.core.log_compressor import (
     CompressionOptions,
     compress_events,

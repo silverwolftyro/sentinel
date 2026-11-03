@@ -27,8 +27,6 @@ import json
 import os
 import time
 
-from fastapi.testclient import TestClient
-
 from src.attachments import (
     ATTACHED_FILE_NAME,
     FORMAT_VERSION,
@@ -36,8 +34,6 @@ from src.attachments import (
     AttachmentStore,
     default_attached_path,
 )
-from src.gui import server as server_module
-from src.gui.server import create_app
 
 #: 项目根目录。
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,19 +95,6 @@ def _arm(armed):
     return {"ok": True, "armed": bool(armed)}
 
 
-def _make_app(tmp_path, **kwargs):
-    """造一个最小可用的看板应用（带假的挂载工厂）。
-
-    :param tmp_path: pytest 的临时目录。
-    :param kwargs: 传给 ``create_app`` 的额外参数。
-    :return: FastAPI 应用。
-    """
-    watch = tmp_path / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = tmp_path / "alert.log"
-    alert.write_text("", encoding="utf-8")
-    kwargs.setdefault("attach_factory", _make_factory(tmp_path))
-    return create_app(str(watch), str(alert), start_watcher=False, **kwargs)
 
 
 def _touch(path, seconds_ago=0.0):
@@ -285,175 +268,15 @@ class Test挂载持久化仓库:
 class Test挂载持久化与自动重连:
     """任务一在看板这一层的端到端行为。"""
 
-    def test_接入之后会写进持久化文件(self, tmp_path):
-        """面板点「接入」→ 持久化文件里多一条。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
 
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/attach", json={"path": str(target)}
-            )
 
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        entries = store.load()
-        assert len(entries) == 1
-        assert entries[0]["path"] == os.path.abspath(str(target))
 
-    def test_卸载之后会从持久化里删掉(self, tmp_path):
-        """用户主动卸载 → 下次启动不该又接回来。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
 
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/attach", json={"path": str(target)}
-            )
-            session_id = response.json()["session"]["id"]
-            removed = client.delete("/api/sessions/{}".format(session_id))
 
-        assert removed.status_code == 200
-        assert store.load() == []
 
-    def test_重启之后挂载会自动接回来(self, tmp_path, capsys):
-        """核心验收：哨兵重启后，之前挂载的会话自动重连。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
-        store.save_entry(
-            {
-                "path": str(target),
-                "agent": "codex",
-                "cwd": "D:/work",
-            }
-        )
 
-        # 造一个「重启后」的新应用。
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            sessions = client.get("/api/sessions").json()["sessions"]
 
-        watched = [s for s in sessions if s["watch_path"] == str(target)]
-        assert watched, "重启后应该自动接回之前挂载的会话"
 
-        output = capsys.readouterr().out
-        assert "已恢复 1 个挂载会话" in output
-
-    def test_恢复走的是和面板一样的接入路径(self, tmp_path):
-        """恢复出来的会话也要带上 Agent 类型与工作区。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
-        store.save_entry(
-            {"path": str(target), "agent": "codex", "cwd": "D:/work"}
-        )
-
-        calls = []
-        app = _make_app(
-            tmp_path,
-            attach_store=store,
-            attach_factory=_make_factory(tmp_path, calls),
-        )
-        with TestClient(app) as client:
-            client.get("/api/sessions")
-
-        assert len(calls) == 1
-        assert calls[0]["path"] == str(target)
-        assert calls[0]["agent"] == "codex"
-
-    def test_失效的挂载会被清理并打印(self, tmp_path, capsys):
-        """文件没了 → 清理 + 打印那一行提示。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        gone = tmp_path / "gone.jsonl"
-        store.save_entry({"path": str(gone)})
-
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            client.get("/api/sessions")
-
-        output = capsys.readouterr().out
-        assert "[SENTINEL] 清理失效的挂载历史:" in output
-        assert str(gone) in output
-        assert store.load() == []
-
-    def test_静默太久的挂载会被清理(self, tmp_path, capsys):
-        """静默超过 1 小时 → 同样清理。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        old = tmp_path / "old.jsonl"
-        old.write_text("{}\n", encoding="utf-8")
-        _touch(old, seconds_ago=STALE_SECONDS + 600)
-        store.save_entry({"path": str(old)})
-
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            client.get("/api/sessions")
-
-        output = capsys.readouterr().out
-        assert "[SENTINEL] 清理失效的挂载历史:" in output
-        assert store.load() == []
-
-    def test_武装状态会被恢复(self, tmp_path, capsys):
-        """用户当初亲手开的武装开关，不该因为重启一次就没了。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
-        store.save_entry(
-            {"path": str(target), "agent": "codex", "armed": True}
-        )
-
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            sessions = client.get("/api/sessions").json()["sessions"]
-
-        watched = [s for s in sessions if s["watch_path"] == str(target)]
-        assert watched
-        output = capsys.readouterr().out
-        assert "已恢复武装状态" in output
-
-    def test_没有持久化仓库也能正常挂载(self, tmp_path):
-        """``attach_store=None`` → 不持久化，但挂载照样能用。"""
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
-
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/attach", json={"path": str(target)}
-            )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-
-    def test_持久化坏了也不挡启动(self, tmp_path):
-        """持久化文件是坏 JSON → 哨兵照样起来（红线 R5）。"""
-        path = tmp_path / ATTACHED_FILE_NAME
-        path.write_text("<<< 不是 JSON >>>", encoding="utf-8")
-        store = AttachmentStore(str(path))
-
-        app = _make_app(tmp_path, attach_store=store)
-        with TestClient(app) as client:
-            response = client.get("/api/sessions")
-        assert response.status_code == 200
-
-    def test_恢复失败不会让哨兵起不来(self, tmp_path):
-        """挂载工厂直接抛异常 → 恢复失败，但服务照常响应。"""
-        store = AttachmentStore(str(tmp_path / ATTACHED_FILE_NAME))
-        target = tmp_path / "agent.jsonl"
-        target.write_text('{"type":"x"}\n', encoding="utf-8")
-        store.save_entry({"path": str(target)})
-
-        def boom(info):
-            """故意炸的工厂。"""
-            raise RuntimeError("模拟挂载失败")
-
-        app = _make_app(tmp_path, attach_store=store, attach_factory=boom)
-        with TestClient(app) as client:
-            response = client.get("/api/sessions")
-        assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -470,26 +293,12 @@ class Test守护与自启已删除:
     残留检测怎么提示）放在 ``tests/test_v330_no_autostart.py``。
     """
 
-    def test_守护模式的代码已经不在了(self):
-        """``--daemon`` 与它的后台自检线程必须消失。"""
-        for gone in (
-            "_serve_with_daemon",
-            "_start_daemon_watchdog",
-            "_probe_http",
-            "_DAEMON_STATE",
-            "DAEMON_CRASH_LOG",
-        ):
-            assert not hasattr(server_module, gone), gone
 
     def test_入口脚本不再认识守护模式(self):
         """``_is_daemon()`` 已删除 —— 入口不再有「后台」这个概念。"""
         entry = _load_entry()
         assert not hasattr(entry, "_is_daemon")
 
-    def test_入口脚本里没有守护相关字样(self):
-        """入口源码里不许再出现 ``--daemon``。"""
-        source = _read("_构建与发布", "scripts", "sentinel_entry.py")
-        assert "--daemon" not in source
 
     def test_不闪退的老行为还在(self):
         """普通模式出错仍然挂住等回车 —— v2.2.1 的承诺没变。"""
@@ -503,75 +312,3 @@ class Test守护与自启已删除:
 # ---------------------------------------------------------------------------
 class Test手动重定向指引:
     """任务二的两处 GUI 引导。"""
-
-    def test_压缩日志的按钮不是禁用按钮(self):
-        """禁用按钮收不到 click —— 用户点了没反应。"""
-        script = _read("src", "gui", "static", "dashboard.js")
-        assert "btn--blocked" in script
-        assert "aria-disabled" in script
-        # 旧的写法：``button.disabled = !!item.attached || !item.attachable``
-        assert "|| !item.attachable" not in script
-
-    def test_雷达弹窗的指引文案齐全(self):
-        """指引要真的告诉用户「怎么才行」。"""
-        script = _read("src", "gui", "static", "dashboard.js")
-        assert "此 Agent 使用压缩格式，无法实时跟随" in script
-        assert "输出重定向" in script
-        assert "session.jsonl" in script
-        assert "手动指定日志路径" in script
-
-    def test_指引气泡有样式(self):
-        """气泡要看得见 —— 没样式的 div 等于没做。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        assert ".attach__guide" in css
-        assert ".btn--blocked" in css
-
-    def test_设置页有怎么让我的Agent被监控面板(self):
-        """折叠面板要在「挂载管理」页里。"""
-        html = _read("src", "gui", "templates", "settings_sessions.html")
-        assert "如何让我的 Agent 被监控" in html
-        assert "settings-guide" in html
-
-    def test_四个Agent的启动命令都在(self):
-        """mcode / codex / claude / deepseek 一个都不能少。"""
-        html = _read("src", "gui", "templates", "settings_sessions.html")
-        for key in ("mcode", "codex", "claude", "deepseek"):
-            assert 'id="guide-cmd-{}"'.format(key) in html, key
-
-    def test_启动命令都带输出重定向(self):
-        """面板的价值就在「怎么接入」—— 命令必须带重定向。"""
-        html = _read("src", "gui", "templates", "settings_sessions.html")
-        for key in ("mcode", "codex", "claude", "deepseek"):
-            start = html.index('id="guide-cmd-{}"'.format(key))
-            end = html.index("</pre>", start)
-            command = html[start:end]
-            assert ">" in command, key
-
-    def test_deepseek那条如实说明只能发现不能接入(self):
-        """诚实优先：压缩格式「只能发现、不能接入」必须写清楚。"""
-        html = _read("src", "gui", "templates", "settings_sessions.html")
-        assert "zstd" in html
-        assert "没法实时跟读" in html
-        assert "纯文本" in html
-
-    def test_面板在sessions路由上(self):
-        """这个折叠面板属于「挂载管理」页。"""
-        source = _read("src", "gui", "server.py")
-        assert "settings_sessions.html" in source
-
-    def test_复制按钮绑了事件(self):
-        """四个命令各有一个能点的【复制】。"""
-        html = _read("src", "gui", "templates", "settings_sessions.html")
-        assert html.count("data-copy-target") == 4
-        script = _read("src", "gui", "static", "settings_sessions.js")
-        assert "bindGuideCopyButtons" in script
-        assert "data-copy-target" in script
-
-    def test_复制被拒时有兜底(self):
-        """浏览器拒绝自动复制时，要能退回「选中让用户自己拷」。"""
-        script = _read("src", "gui", "static", "settings_sessions.js")
-        assert "selectElementText" in script
-        common = _read("src", "gui", "static", "settings_common.js")
-        assert "selectElementText" in common
-
-

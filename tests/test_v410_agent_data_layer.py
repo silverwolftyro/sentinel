@@ -505,34 +505,12 @@ def test_能通过兜底目录找到可执行文件(tmp_path: Path) -> None:
     assert found == str(target)
 
 
-# ---------------------------------------------------------------------------
-# 前端契约
-# ---------------------------------------------------------------------------
-def test_前端有慢待验证状态() -> None:
-    """雷达面板要能单独标出「慢/待验证」。"""
-    source = Path(STATIC_DIR, "dashboard.js").read_text(encoding="utf-8")
-    assert "慢/待验证" in source
-    assert "SLOW_PROCESS_SECONDS" in source
 
 
-def test_前端慢状态有配套样式() -> None:
-    """状态要有视觉反馈，不能只是文字。"""
-    source = Path(STATIC_DIR, "dashboard.css").read_text(encoding="utf-8")
-    assert "attach__badge--slow" in source
 
 
-def test_会话列表签名没变就不重建() -> None:
-    """会话列表每 5 秒轮询一次，不能每次都把用户的条目抽走。"""
-    source = Path(STATIC_DIR, "dashboard.js").read_text(encoding="utf-8")
-    assert "sessionListSignature" in source
-    assert "renderedSessionSig" in source
 
 
-def test_实时流水区签名没变就不重建() -> None:
-    """15 秒回放的流水区也不能每次整块重建。"""
-    source = Path(STATIC_DIR, "dashboard.js").read_text(encoding="utf-8")
-    assert "liveAuditSignature" in source
-    assert "renderedLiveAuditSig" in source
 
 
 # ---------------------------------------------------------------------------

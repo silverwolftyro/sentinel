@@ -15,11 +15,7 @@ import os
 
 import yaml
 
-from src.config_loader import (
-    read_config_text,
-    save_config,
-    update_config_text,
-)
+from src.config_loader import read_config_text, save_config, update_config_text
 
 # ---------------------------------------------------------------------------
 # 样本

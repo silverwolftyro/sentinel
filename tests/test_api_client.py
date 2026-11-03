@@ -17,11 +17,7 @@ import os
 
 import requests
 
-from src.llm.api_client import (
-    API_KEY_ENV,
-    ApiError,
-    OpenAICompatibleClient,
-)
+from src.llm.api_client import API_KEY_ENV, ApiError, OpenAICompatibleClient
 from src.llm.base import Explanation
 from src.llm.factory import build_provider, normalize_provider
 from src.llm.ollama_client import OllamaClient

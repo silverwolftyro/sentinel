@@ -270,27 +270,7 @@ class TestDemoLog:
 class TestServerEntry:
     """``python -m src.gui.server`` 的命令行入口。"""
 
-    def test_missing_watch_and_demo_is_rejected(self) -> None:
-        """既不给 --watch 也不给 --demo —— 直接报错，别让人干等。"""
-        from src.gui import server
 
-        with pytest.raises(SystemExit):
-            server.main([])
-
-    def test_demo_flag_is_accepted_without_watch(self) -> None:
-        """--demo 可以单独用（参数解析层面不该报错）。"""
-        # 只验证参数解析这一步：main 会真的起服务，所以这里只断言
-        # 「不会因为缺 --watch 而报错」。
-        import argparse
-
-        from src.gui import server
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--demo", action="store_true")
-        parser.add_argument("--watch", default=None)
-        args = parser.parse_args(["--demo"])
-        assert args.demo is True
-        assert server.DEFAULT_PORT == 8000
 
 
 # ---------------------------------------------------------------------------

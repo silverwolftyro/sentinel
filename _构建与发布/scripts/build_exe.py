@@ -55,10 +55,19 @@ LOG_PATH = os.path.join(DIST_DIR, "build_exe.log")
 #: 入口脚本。
 ENTRY_SCRIPT = os.path.join(_HERE, "sentinel_entry.py")
 
+#: 产物 exe 的文件名（v5.0.0 起）。
+#:
+#: ⚠️ 为什么改名 —— 哨兵不再是「双击开面板的监控客户端」，
+#: 而是**无头守护进程**。名字要说实话：
+#: ``sentinel.exe`` 让人以为双击会弹个界面出来。
+EXE_NAME = "sentinel-daemon.exe"
+
 #: 随包资源：``(源路径, 包内目标目录)``。
+#:
+#: v5.0.0：哨兵是**无头守护进程** —— 面板的静态资源与模板
+#: **已整体剥离**（``src/gui/static/``、``src/gui/templates/``），
+#: 剩下的只有配置模板与 Agent 清单。
 DATA_FILES = (
-    (os.path.join("src", "gui", "templates"), os.path.join("src", "gui", "templates")),
-    (os.path.join("src", "gui", "static"), os.path.join("src", "gui", "static")),
     # v4.1.0：Agent 清单是**数据**，必须随包 ——
     # 少了它，雷达就认不出那 14 个 Agent（数据层整体降级成空表）。
     (
@@ -84,15 +93,6 @@ OPTIONAL_HIDDEN_IMPORTS = (
     # ⚠️ 3.14 以下没有这个模块 → 走「可选依赖」通道，
     #    装了的才点名（没装还硬点名，PyInstaller 会刷一串警告）。
     "compression.zstd",
-    # v3.4.0：pystray —— Windows 系统托盘（【打开看板】/【彻底退出】）。
-    # ⚠️ 托盘是**可选**的：没装就**不出图标**，哨兵照跑。
-    #    但装了的必须点名 —— 它是函数内动态导入的，
-    #    静态分析会漏掉，漏了就是「打包成功但运行时没有托盘」。
-    "pystray",
-    # v3.4.0：PIL —— 自绘托盘图标（不依赖 .ico 资源文件）。
-    "PIL",
-    # pystray 的 Windows 后端在运行时按名字找后端模块。
-    "pystray._win32",
 )
 
 #: 显式声明的隐藏导入。
@@ -155,19 +155,22 @@ HIDDEN_IMPORTS = (
     "src.adapters.mcode",
     "src.adapters.codex",
     "src.adapters.claude",
+    "src.adapters.text",
     "src.demo",
     "src.console",
     "src.config_loader",
     "src.tailer",
-    # uvicorn 的「自动选择协议/事件循环」要显式点名，否则会退化成纯 HTTP。
-    "uvicorn.logging",
-    "uvicorn.loops.auto",
-    "uvicorn.loops.asyncio",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.http.h11_impl",
-    "uvicorn.protocols.websockets.auto",
-    "uvicorn.lifespan.on",
-    "uvicorn.lifespan.off",
+    # v5.0.0：无头守护进程 —— 对外的极简 HTTP 接口与它的会话隔离层。
+    # 入口是**函数内**导入的，静态分析看不到，必须显式点名。
+    # 漏掉的代价：打包版 exe 起来后**没有 HTTP 接口**，
+    # 而且不会报错 —— 只是外部宿主连不上。
+    "src.daemon",
+    "src.daemon.context",
+    "src.daemon.precheck",
+    "src.daemon.server",
+    "src.daemon.worker",
+    # v5.0.0：面板的 Web 框架那一套（fastapi / uvicorn / jinja2）**已剥离** ——
+    # 接口改用标准库 ``http.server``，所以这几个包**不再**需要点名。
 )
 
 #: 显式排除的大库（用不上，却能撑爆体积）。
@@ -178,12 +181,15 @@ EXCLUDED_MODULES = (
     "numpy",
     "pandas",
     "scipy",
-    # ⚠️ v3.4.0：**PIL 不再排除** ——
-    #    托盘图标是 Pillow 自己画的（`src/gui/tray.py` 的 `build_tray_image`）。
-    #    ⚠️ ``--exclude-module`` 的优先级**高于** ``--hidden-import`` ——
-    #    这里排除着，打包出来的 exe 就**没有 Pillow**，
-    #    托盘图标会静默地不出现（只有日志里一行「托盘不可用」）。
-    #    Pillow 只在「有托盘」时才用得上，其余功能一概不碰它。
+    # v5.0.0：面板的 Web 栈**整体剥离** —— 显式排除，
+    # 保证它们**不会**被任何残余的动态导入拖进 exe。
+    # ⚠️ ``--exclude-module`` 的优先级**高于** ``--hidden-import`` ——
+    #    这里排除着，打包出来的 exe 就**真的没有**它们。
+    "fastapi",
+    "uvicorn",
+    "jinja2",
+    "pystray",
+    "PIL",
     "PyQt5",
     "PyQt6",
     "PySide2",
@@ -258,7 +264,7 @@ def build_argv() -> List[str]:
         "--onefile",
         "--console",
         "--name",
-        "sentinel",
+        EXE_NAME,
         "--distpath",
         DIST_DIR,
         "--workpath",
@@ -326,7 +332,7 @@ def verify(exe_path: str, handle: Optional[object] = None) -> bool:
     :return: 自检是否通过。
     """
     _log("", handle)
-    _log("---- 自检：sentinel.exe --help ----", handle)
+    _log("---- 自检：" + EXE_NAME + " --help ----", handle)
     try:
         result = subprocess.run(
             [exe_path, "--help"],
@@ -392,7 +398,7 @@ def release_exe_lock(exe_path: str, handle: Optional[object] = None) -> int:
                 pids.append(int(proc.info["pid"]))
     else:  # pragma: no cover —— 没有 psutil 时退回按进程名结束
         result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq sentinel.exe", "/NH"],
+            ["tasklist", "/FI", "IMAGENAME eq " + EXE_NAME, "/NH"],
             capture_output=True,
         )
         for line in _decode(result.stdout or b"").splitlines():
@@ -464,13 +470,13 @@ def make_zip(exe_path: str, handle: Optional[object] = None) -> Optional[str]:
     """
     version = project_version()
     zip_path = os.path.join(
-        DIST_DIR, f"sentinel-v{version}-win-x64.zip"
+        DIST_DIR, f"sentinel-daemon-v{version}-win-x64.zip"
     )
     try:
         with zipfile.ZipFile(
             zip_path, "w", compression=zipfile.ZIP_DEFLATED
         ) as archive:
-            archive.write(exe_path, arcname="sentinel.exe")
+            archive.write(exe_path, arcname=EXE_NAME)
             # GPL-3.0：许可证与出处声明必须**随二进制一起分发** ——
             # 拿到这个 zip 的人，不翻仓库就知道这份代码什么许可、
             # 参考了谁、那些代码从哪来。
@@ -649,7 +655,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # ⚠️ 必须**先**腾出文件锁 —— 旧 exe 还在跑的话，
         # PyInstaller 删不掉它就直接 PermissionError 收工。
-        release_exe_lock(os.path.join(DIST_DIR, "sentinel.exe"), handle)
+        release_exe_lock(os.path.join(DIST_DIR, EXE_NAME), handle)
 
         command = build_argv()
         _log("---- PyInstaller 参数 ----", handle)
@@ -672,7 +678,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             _log(f"打包失败（退出码 {result.returncode}）。", handle)
             return 1
 
-        exe_path = os.path.join(DIST_DIR, "sentinel.exe")
+        exe_path = os.path.join(DIST_DIR, EXE_NAME)
         if not os.path.exists(exe_path):
             _log(f"打包说成功了，但没找到产物：{exe_path}", handle)
             return 1

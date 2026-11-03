@@ -30,14 +30,12 @@ import time
 from typing import Any, Dict, List
 
 import pytest
-from fastapi.testclient import TestClient
 
 from src import selfmon
 from src.core import channels
 from src.core.briefing import BriefingStats, build_briefing_summary
 from src.core.channels import WebhookChannel
 from src.core.notifier import Notifier, _build_webhook
-from src.gui.server import create_app
 from src.tailer import FileTailer
 
 #: 仓库根目录。
@@ -615,97 +613,22 @@ class TestTailerBufferLimit:
         assert tailer._buffer_truncated is False
 
 
-# ---------------------------------------------------------------------------
-# 看板：关于系统
-# ---------------------------------------------------------------------------
-def _make_app(tmp_path):
-    """造一个指向临时目录的应用（不启动后台线程）。"""
-    watch = tmp_path / "agent.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert_log = tmp_path / "alerts.log"
-    alert_log.write_text("", encoding="utf-8")
-    return create_app(
-        str(watch), str(alert_log), start_watcher=False, demo_mode=False
-    )
 
 
 class TestSystemApi:
     """``/api/system`` 端点。"""
 
-    def test_api_system_returns_core_fields(self, tmp_path) -> None:
-        """★ 必须带版本号、进程信息与服务器运行时长。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.get("/api/system")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ok"] is True
-        assert data["version"]
-        assert "process" in data
-        assert data["server_uptime_seconds"] >= 0
-        assert data["server_uptime_text"]
 
-    def test_api_system_process_has_memory_and_uptime(self, tmp_path) -> None:
-        """★ 进程信息里必须有内存占用与运行时长。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            data = client.get("/api/system").json()
-
-        process = data["process"]
-        assert "memory_mb" in process
-        assert "uptime_text" in process
-
-    def test_settings_system_page_renders(self, tmp_path) -> None:
-        """【关于系统】子页能打开。"""
-        app = _make_app(tmp_path)
-        with TestClient(app) as client:
-            response = client.get("/settings/system")
-
-        assert response.status_code == 200
-        assert "关于系统" in response.text
 
 
 class TestSystemPageAssets:
     """【关于系统】页面模板与前端脚本的契约。"""
 
-    def test_template_exists(self) -> None:
-        """模板文件在。"""
-        path = os.path.join(ROOT, "src", "gui", "templates", "settings_system.html")
-        assert os.path.isfile(path)
 
-    def test_template_shows_the_three_numbers(self) -> None:
-        """★ 模板里必须有运行时长、内存占用、版本号三个字段。"""
-        path = os.path.join(ROOT, "src", "gui", "templates", "settings_system.html")
-        with open(path, encoding="utf-8") as handle:
-            html = handle.read()
-        assert "运行时长" in html
-        assert "内存" in html
-        assert "版本" in html
 
-    def test_static_script_exists(self) -> None:
-        """前端脚本在。"""
-        path = os.path.join(ROOT, "src", "gui", "static", "settings_system.js")
-        assert os.path.isfile(path)
 
-    def test_static_script_exposes_page_contract(self) -> None:
-        """★ 页面脚本必须暴露 ``window.SentinelPage = { init, destroy }``。"""
-        path = os.path.join(ROOT, "src", "gui", "static", "settings_system.js")
-        with open(path, encoding="utf-8") as handle:
-            script = handle.read()
-        assert "window.SentinelPage" in script
-        assert "init" in script
-        assert "destroy" in script
 
-    def test_nav_has_system_entry(self) -> None:
-        """左侧导航里有「关于系统」。"""
-        path = os.path.join(
-            ROOT, "src", "gui", "templates", "settings_base.html"
-        )
-        with open(path, encoding="utf-8") as handle:
-            html = handle.read()
-        assert "/settings/system" in html
-        assert "关于系统" in html
 
 
 # ---------------------------------------------------------------------------

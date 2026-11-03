@@ -163,25 +163,8 @@ def _handle_y(order: list, flow_height: int = MODEL_FLOW_HEIGHT) -> int:
 class TestDOMOrder:
     """中间面板的子元素顺序。"""
 
-    def test_流水区在分隔条上方(self):
-        """流水区必须在分隔条**上面** —— 它的下沿才是把手。"""
-        order = _panel_children()
-        assert order.index("live-audit") < order.index("resizer-audit")
 
-    def test_告警标题条在分隔条下方(self):
-        """告警标题条与告警列表在分隔条**下面**。"""
-        order = _panel_children()
-        assert order.index("resizer-audit") < order.index("panel__head")
-        assert order.index("panel__head") < order.index("panel__body")
 
-    def test_完整顺序(self):
-        """四个子元素的顺序要一字不差。"""
-        assert _panel_children() == [
-            "live-audit",
-            "resizer-audit",
-            "panel__head",
-            "panel__body",
-        ]
 
 
 # ---------------------------------------------------------------------------
@@ -190,36 +173,9 @@ class TestDOMOrder:
 class TestCSSContract:
     """样式表必须配合新的 DOM 顺序。"""
 
-    def test_流水区的分隔线在下沿(self):
-        """流水区挪到上面后，分隔线得跟着换到 ``border-bottom``。"""
-        block = _css_rule(
-            _read("src", "gui", "static", "dashboard.css"), ".live-audit"
-        )
-        assert "border-bottom: 1px solid var(--border);" in block
-        assert "border-top" not in block
 
-    def test_告警标题条锁死高度(self):
-        """标题条夹在分隔条下面，必须 ``flex: none`` —— 不然会被压扁。"""
-        block = _css_rule(
-            _read("src", "gui", "static", "dashboard.css"),
-            ".panel--alerts .panel__head",
-        )
-        assert re.search(r"flex:\s*none", block)
 
-    def test_流水区高度仍由变量驱动(self):
-        """``--audit-h`` 的机制一字未改。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        block = _css_rule(css, ".live-audit")
-        assert "var(--audit-h)" in block
-        assert "max-height: 30vh" not in block
-        alerts = _css_rule(css, ".panel--alerts")
-        assert re.search(r"--audit-h:\s*200px", alerts)
 
-    def test_窄屏的流水高度依旧压一档(self):
-        """760px 断点继续把变量压到 140px。"""
-        css = _read("src", "gui", "static", "dashboard.css")
-        mobile = css.split("@media (max-width: 760px)", 1)[1]
-        assert re.search(r"\.panel--alerts\s*\{[^}]*--audit-h:\s*140px", mobile)
 
 
 # ---------------------------------------------------------------------------
@@ -228,29 +184,8 @@ class TestCSSContract:
 class TestJSContract:
     """拖拽映射本身。"""
 
-    def test_纵向映射仍然是加号(self):
-        """``+ dy`` 的符号**没改** —— 修的是布局，不是符号。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        block = js.split('} else if (mode === "audit") {', 1)[1]
-        block = block.split("}", 1)[0]
-        assert "clampAudit(startAudit + dy)" in block
-        assert "startAudit - dy" not in block
 
-    def test_横向映射一字未动(self):
-        """左右两条分隔条的映射不许被牵连。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        block = js.split("function bindResizer(", 1)[1]
-        block = block.split("var stop = function", 1)[0]
-        assert "clampSessions(startSessions + dx)" in block
-        assert "clampStream(startStream - dx)" in block
 
-    def test_告警区至少留一百二十像素(self):
-        """夹紧上限要继续为告警区留出空间。"""
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "LAYOUT_MIN_ALERT_AREA = 120;" in js
-        block = js.split("function clampAudit(", 1)[1]
-        block = block.split("\n  }", 1)[0]
-        assert "LAYOUT_MIN_ALERT_AREA" in block
 
 
 # ---------------------------------------------------------------------------
@@ -259,12 +194,6 @@ class TestJSContract:
 class TestGeometryModel:
     """把手位移对流水高度的导数 —— 必须为 **+1**。"""
 
-    def test_当前顺序下把手跟手(self):
-        """流水长高 1px，把手必须**跟着**下移 1px。"""
-        order = _panel_children()
-        base = _handle_y(order, MODEL_FLOW_HEIGHT)
-        grown = _handle_y(order, MODEL_FLOW_HEIGHT + 10)
-        assert grown - base == 10
 
     def test_旧顺序会把把手顶上去(self):
         """把流水挪回分隔条**下面**，导数就变成 −1 —— 这正是 v3.6.0 的 Bug。"""
@@ -278,11 +207,6 @@ class TestGeometryModel:
         grown = _handle_y(old_order, MODEL_FLOW_HEIGHT + 10)
         assert grown - base == -10
 
-    def test_把手挂在流水下沿时流水不会顶到面板外(self):
-        """流水区的下沿就是把手 —— 面板总高不变，两段此消彼长。"""
-        order = _panel_children()
-        assert order[0] == "live-audit"
-        assert order[1] == "resizer-audit"
 
 
 # ---------------------------------------------------------------------------
@@ -300,26 +224,8 @@ class TestDemoContract:
             "_构建与发布", "scripts", "demo_v361_drag_direction.py"
         )
 
-    def test_演示脚本量了把手的位移(self):
-        """v3.6.0 只量了流水区盒子的高度，漏掉了把手 —— 这里必须量。"""
-        demo = self._demo()
-        assert "resizer_audit" in demo
-        assert "handle_follows_mouse_down" in demo
-        assert "handle_follows_mouse_up" in demo
 
-    def test_演示脚本两个方向都断言(self):
-        """往下、往上都要断言 —— 只测一个方向等于没测。"""
-        demo = self._demo()
-        assert "flow_grows_on_drag_down" in demo
-        assert "flow_shrinks_on_drag_up" in demo
-        assert "alert_shrinks_on_drag_down" in demo
-        assert "alert_grows_on_drag_up" in demo
 
-    def test_演示脚本断言了横向行为不变(self):
-        """左右两条分隔条也要一起验。"""
-        demo = self._demo()
-        assert "sessions_handle_follows" in demo
-        assert "stream_handle_follows" in demo
 
     def test_旧的探针脚本不再保留(self):
         """排查用的探针不进版本库 —— 它只会让人以为那就是验收脚本。"""

@@ -50,11 +50,7 @@ from src.adapters.fingerprint import (
     normalize_path,
 )
 from src.adapters.mcode import McodeAdapter
-from src.core.engine import (
-    SEVERITY_RED_LINE,
-    IntentTracker,
-    SentinelEngine,
-)
+from src.core.engine import SEVERITY_RED_LINE, IntentTracker, SentinelEngine
 from src.core.memory import LongTermMemory, ShortTermMemory, StreamMemory
 from src.llm.cascade import (
     CASCADE_STATUS_CLEARED,
@@ -858,7 +854,7 @@ class TestGuiStreams:
     """看板按指纹把一份日志拆成多路。"""
 
     def test_store_groups_alerts_by_fingerprint(self):
-        from src.gui.server import AlertStore
+        from src.core.session_server import AlertStore
 
         store = AlertStore()
         store.add_alert({"alert_id": "1", "fingerprint": "thread:A"})
@@ -871,7 +867,7 @@ class TestGuiStreams:
         assert streams["thread:B"]["alerts"] == 1
 
     def test_store_groups_ontrack_entries(self):
-        from src.gui.server import AlertStore
+        from src.core.session_server import AlertStore
 
         store = AlertStore()
         store.add_ontrack(
@@ -881,7 +877,7 @@ class TestGuiStreams:
         assert streams["thread:A"]["ontrack"] == 1
 
     def test_unlabelled_entries_go_to_the_default_route(self):
-        from src.gui.server import AlertStore
+        from src.core.session_server import AlertStore
 
         store = AlertStore()
         store.add_alert({"alert_id": "1"})
@@ -889,7 +885,7 @@ class TestGuiStreams:
         assert streams[0]["key"] == "default"
 
     def test_snapshot_carries_streams_and_cascade(self):
-        from src.gui.server import AlertStore
+        from src.core.session_server import AlertStore
 
         store = AlertStore()
         store.set_cascade_stats({"saved_cloud_calls": 7, "l2_calls": 9})
@@ -902,7 +898,7 @@ class TestGuiCascadeLine:
     """级联统计行 —— 与引擎是一对日志格式契约。"""
 
     def test_parse_cascade_line(self):
-        from src.gui.server import parse_cascade_line
+        from src.core.session_server import parse_cascade_line
 
         line = 'CASCADE_JSON {"l2_calls": 3, "saved_cloud_calls": 2}'
         data = parse_cascade_line(line)
@@ -910,14 +906,14 @@ class TestGuiCascadeLine:
         assert data["saved_cloud_calls"] == 2
 
     def test_parse_cascade_line_ignores_other_lines(self):
-        from src.gui.server import parse_cascade_line
+        from src.core.session_server import parse_cascade_line
 
         assert parse_cascade_line("普通人读的一行") is None
         assert parse_cascade_line("CASCADE_JSON 不是 JSON") is None
 
     def test_engine_and_gui_share_the_same_marker(self):
         from src.core.engine import CASCADE_MARKER as ENGINE_MARKER
-        from src.gui.server import CASCADE_MARKER as GUI_MARKER
+        from src.core.session_server import CASCADE_MARKER as GUI_MARKER
 
         assert ENGINE_MARKER == GUI_MARKER == "CASCADE_JSON"
 
@@ -926,7 +922,7 @@ class TestGuiConfigPlumbing:
     """设置页 —— L2 / L3 两个区都要能存回配置。"""
 
     def test_collect_config_updates_maps_cascade_paths(self):
-        from src.gui.server import _collect_config_updates
+        from src.core.session_server import _collect_config_updates
 
         updates = _collect_config_updates(
             {
@@ -965,7 +961,10 @@ class TestGuiConfigPlumbing:
 
     def test_masked_secret_is_never_written_back(self):
         """打码值回传时**必须跳过** —— 否则真密钥会被抹掉。"""
-        from src.gui.server import SECRET_MASK, _collect_config_updates
+        from src.core.session_server import (
+            SECRET_MASK,
+            _collect_config_updates,
+        )
 
         updates = _collect_config_updates(
             {"cascade": {"l3": {"api_key": SECRET_MASK}}}
@@ -976,33 +975,10 @@ class TestGuiConfigPlumbing:
 class TestFrontendAssets:
     """前端 —— 看板与设置页必须真的把新东西露出来。"""
 
-    def test_dashboard_has_the_saving_counter(self):
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert "count-cascade-text" in html
-        assert "L2 已过滤" in html
 
-    def test_dashboard_has_the_stream_filter(self):
-        html = _read("src", "gui", "templates", "dashboard.html")
-        assert "stream-filter" in html
 
-    def test_dashboard_js_renders_virtual_session_cards(self):
-        js = _read("src", "gui", "static", "dashboard.js")
-        assert "renderStreamCards" in js
-        assert "session-stream" in js
-        assert "updateCascadeCounter" in js
 
-    def test_settings_page_splits_l2_and_l3(self):
-        html = _read("src", "gui", "templates", "settings_llm.html")
-        assert "L2 本地（拦截过滤）" in html
-        assert "L3 云端（终极裁判）" in html
-        assert "cascade-l2-base-url" in html
-        assert "cascade-l3-base-url" in html
 
-    def test_settings_js_collects_both_tiers(self):
-        js = _read("src", "gui", "static", "settings_llm.js")
-        assert "cascade-l2-provider" in js
-        assert "cascade-l3-provider" in js
-        assert "cascade-require-agreement" in js
 
 
 class TestExampleConfig:

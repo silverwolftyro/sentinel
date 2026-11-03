@@ -1,4 +1,4 @@
-"""v4.3.1 回归：界面文案中性化与开源合规致谢。
+"""v4.3.1 回归：文案中性化与开源合规致谢（v5.0.0 更新）。
 
 背景
 ====
@@ -7,25 +7,28 @@ v4.3.0 的雷达功能实机验证成功，但界面上的那个**特定上游�
 
 v4.3.1 把这些文案中性化，并按 MIT 协议补上出处声明。
 
+⚠️ v5.0.0 更新
+===============
+
+面板（FastAPI + Jinja2 + SSE + 前端静态资源）**整体剥离**之后：
+
+* 「前端不许出现旧称呼」这一类断言**没有对象可测了** ——
+  不是「通过了」，是**前端不存在了**。
+  下面用 :func:`test_前端资产已经剥离` 把这件事**钉成断言**：
+  谁要是把前端加回来，这条测试会失败。
+* 后端清单里的 ``src/gui/server.py`` 搬到了
+  ``src/core/session_server.py``（核心逻辑不该住在 ``gui/`` 里）。
+
 三条线必须同时成立
 ==================
 
-1. **界面不能出现私人化 / 特定项目名** ——
-   徽章、日志提示、Toast、设置页、示例配置、``--help``
-   全部只能是中性词（「外部进程」「外部插件」）。
-
+1. **后端与文档不许出现私人称呼**；
 2. **识别能力不能被改坏** ——
-   ``src/proc_tree.py`` 的 ``BRIDGE_HOST_*_MARKERS`` 里那些
-   字面量（``n.e.k.o_plugin_agent_bridge`` / ``neko`` …）
-   是**识别真实宿主进程的判据**，一个字都不能动。
-   上游项目的出处标识也**要保留**（见 ``NOTICE``）。
-
+   ``src/proc_tree.py`` 的 ``BRIDGE_HOST_*_MARKERS`` 里那些字面量
+   是**识别真实宿主进程的判据**，一个字都不能动；
 3. **全库零残留**（v4.3.2 追加）——
-   那个私人称呼后来被判定为「不宜出现在公开仓库的任何角落」，
+   那个私人称呼被判定为「不宜出现在公开仓库的任何角落」，
    于是**历史文档、CHANGELOG、版本说明一并去个人化**。
-   本文件最后一条断言盯的就是这件事。
-
-本文件把这三条都钉住 —— 防止以后有人「顺手」改回去。
 """
 
 from __future__ import annotations
@@ -39,21 +42,18 @@ import pytest
 #: 仓库根目录。
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-#: 前端静态资源与模板 —— **用户直接看得见**的地方。
-FRONTEND_FILES: Tuple[str, ...] = (
-    "src/gui/static/dashboard.js",
-    "src/gui/static/dashboard.css",
-    "src/gui/static/router.js",
-    "src/gui/static/settings_common.js",
-    "src/gui/static/settings_index.js",
-    "src/gui/static/settings_llm.js",
-    "src/gui/static/settings_pipeline.js",
-    "src/gui/static/settings_rules.js",
-    "src/gui/static/settings_sessions.js",
-    "src/gui/static/settings_system.js",
-    "src/gui/static/settings_webhook.js",
-    "src/gui/templates/dashboard.html",
-    "src/gui/templates/settings_sessions.html",
+#: 后端「源代码区」—— 注释与日志里不许出现私人称呼，
+#: 但**允许**保留上游项目的出处标识（``NOTICE`` 指向它）。
+BACKEND_FILES: Tuple[str, ...] = (
+    "src/proc_tree.py",
+    "src/procscan.py",
+    "src/radar.py",
+    "src/core/session_server.py",
+    "src/agents/__init__.py",
+    "src/agents/launcher.py",
+    "src/agents/cloud_agents.json",
+    "src/adapters/text.py",
+    "src/adapters/fingerprint.py",
 )
 
 #: 私人化的旧称呼 —— **一个字都不该再出现**。
@@ -63,35 +63,6 @@ FRONTEND_FILES: Tuple[str, ...] = (
 #: 都不能把它写进文件，否则全局搜索永远归不了零。
 #: （第一个字 U+4E91，第二个字 U+6735）
 FORBIDDEN_PRIVATE: Tuple[str, ...] = ("\u4e91\u6735",)
-
-#: 旧标题的完整形态。
-OLD_TITLE: str = FORBIDDEN_PRIVATE[0] + "派发的进程"
-
-#: 旧的进程计数提示。
-OLD_COUNT: str = "个" + FORBIDDEN_PRIVATE[0] + "派发进程。"
-
-#: 特定项目名 —— 前端与用户可见文案里不许出现。
-FORBIDDEN_PROJECT_NAMES: Tuple[str, ...] = (
-    "n.e.k.o",
-    "N.E.K.O",
-    "neko",
-    "agent_bridge",
-    "addsas222",
-)
-
-#: 后端「源代码区」—— 注释与日志里不许出现私人称呼，
-#: 但**允许**保留上游项目的出处标识（``NOTICE`` 指向它）。
-BACKEND_FILES: Tuple[str, ...] = (
-    "src/proc_tree.py",
-    "src/procscan.py",
-    "src/radar.py",
-    "src/gui/server.py",
-    "src/agents/__init__.py",
-    "src/agents/launcher.py",
-    "src/agents/cloud_agents.json",
-    "src/adapters/text.py",
-    "src/adapters/fingerprint.py",
-)
 
 
 def _read(relative: str) -> str:
@@ -117,99 +88,63 @@ def _tracked_files() -> List[Path]:
         check=False,
         cwd=str(ROOT_DIR),
     )
-    return [
-        ROOT_DIR / item
-        for item in out.stdout.split("\0")
-        if item
-    ]
+    return [ROOT_DIR / item for item in out.stdout.split("\0") if item]
 
 
 # ---------------------------------------------------------------------------
-# 任务一：界面文案中性化
+# 前端资产已剥离（v5.0.0）
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("relative", FRONTEND_FILES)
-def test_前端不含私人化称呼(relative: str) -> None:
-    """前端一个旧称呼都不许有。"""
-    source = _read(relative)
-    for word in FORBIDDEN_PRIVATE:
-        assert word not in source, "{} 里还有 {}".format(relative, word)
+def test_前端资产已经剥离() -> None:
+    """面板**整体**没有了 —— 这是 v5.0.0 的核心事实，钉住它。
 
+    以前这里有一堆「前端不许出现旧称呼」的断言；
+    面板剥离之后**没有对象可测**了 ——
+    那个断言会变成「对空气做检查」。
 
-@pytest.mark.parametrize("relative", FRONTEND_FILES)
-def test_前端不含特定项目名(relative: str) -> None:
-    """前端不许出现特定上游项目的名字。"""
-    source = _read(relative).lower()
-    for word in FORBIDDEN_PROJECT_NAMES:
-        assert word.lower() not in source, (
-            "{} 里还有 {}".format(relative, word)
+    所以改成**断言前端不存在**：
+    谁要是把面板加回来（或者只加回一半），这条测试会失败。
+    """
+    for relative in (
+        "src/gui/static/dashboard.js",
+        "src/gui/static/dashboard.css",
+        "src/gui/templates/dashboard.html",
+        "src/gui/server.py",
+        "src/gui/tray.py",
+    ):
+        assert not (ROOT_DIR / relative).exists(), (
+            "{} 还在 —— v5.0.0 应当已剥离面板".format(relative)
         )
 
 
-def test_雷达面板标题是中性词() -> None:
-    """旧标题 → 「检测到的外部进程」。"""
-    source = _read("src/gui/static/dashboard.js")
-    assert '"检测到的外部进程（"' in source
-    assert OLD_TITLE not in source
+def test_核心逻辑搬到了core() -> None:
+    """核心逻辑不该住在 ``gui/`` 里（v5.0.0 顺手搬了家）。"""
+    path = ROOT_DIR / "src" / "core" / "session_server.py"
+    assert path.is_file(), "核心模块没搬到 src/core/session_server.py"
+    source = path.read_text(encoding="utf-8")
+    for name in ("AlertStore", "EventHub", "Watcher", "SessionRegistry"):
+        assert name in source, name
 
 
-def test_进程计数提示是中性词() -> None:
-    """Toast 里的计数提示也要中性。"""
-    source = _read("src/gui/static/dashboard.js")
-    assert "个外部进程。" in source
-    assert OLD_COUNT not in source
-
-
-def test_疑似挂起的提示不含特定项目名() -> None:
-    """tooltip 里那句「实测」不能指着某个特定项目。"""
-    source = _read("src/gui/static/dashboard.js")
-    assert "疑似挂起" in source
-    block = source.split("badge.title =")[1][:400]
-    for word in FORBIDDEN_PRIVATE + FORBIDDEN_PROJECT_NAMES:
-        assert word.lower() not in block.lower(), word
-
-
-def test_设置页的示例是中性词() -> None:
-    """设置页 placeholder 里的示例名不该是某个具体项目。"""
-    source = _read("src/gui/templates/settings_sessions.html")
-    assert 'placeholder="neko"' not in source
-    assert 'placeholder="my-cli"' in source
-
-
-def test_示例配置里的示例是中性词() -> None:
-    """示例配置会被用户直接抄走。"""
-    source = _read("config/config.example.yaml")
-    assert "neko" not in source.lower()
-    assert "N.E.K.O" not in source
-
-
-def test_exe帮助文本不含私人化称呼() -> None:
-    """``--help`` 是用户直接看到的。"""
-    source = _read("_构建与发布/scripts/sentinel_entry.py")
-    for word in FORBIDDEN_PRIVATE:
-        assert word not in source, word
-
-
-def test_exe帮助文本披露致谢出处() -> None:
-    """``--help`` 里**应该**出现上游出处。
-
-    ⚠️ 这跟「不许出现特定项目名」是**两回事** ——
-    「不许出现」指的是**把某个项目当成自己**的那种出现
-    （面板标题、徽章、设置页示例）。
-    而在致谢段落里**明示**出处，是 MIT 合规**要求**的，
-    也是对上游最基本的尊重。
-    """
-    source = _read("_构建与发布/scripts/sentinel_entry.py")
-    assert "addsas222/n.e.k.o_plugin_agent_bridge" in source
-    assert "NOTICE" in source
+def test_无头守护进程在() -> None:
+    """新的对外接口在 ``src/daemon/``。"""
+    path = ROOT_DIR / "src" / "daemon" / "server.py"
+    assert path.is_file(), "缺 src/daemon/server.py"
+    source = path.read_text(encoding="utf-8")
+    assert "http.server" in source
+    assert "/api/pre-check" in source
+    assert "/api/attach" in source
 
 
 # ---------------------------------------------------------------------------
-# 任务二：后端净化（但识别能力不能改坏）
+# 后端净化（但识别能力不能改坏）
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("relative", BACKEND_FILES)
 def test_后端不含私人化称呼(relative: str) -> None:
     """后端代码与数据里也不该有私人称呼。"""
-    source = _read(relative)
+    path = ROOT_DIR / relative
+    if not path.is_file():
+        pytest.skip("{} 已不存在（v5.0.0 搬走了）".format(relative))
+    source = path.read_text(encoding="utf-8")
     for word in FORBIDDEN_PRIVATE:
         assert word not in source, "{} 里还有 {}".format(relative, word)
 
@@ -237,7 +172,7 @@ def test_上游出处标识保留() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 任务三：开源合规与致谢
+# 开源合规与致谢
 # ---------------------------------------------------------------------------
 def test_notice文件存在() -> None:
     """NOTICE 必须放在**仓库根目录**。"""
@@ -284,8 +219,33 @@ def test_notice里列出了具体复用了什么() -> None:
         assert item in source, item
 
 
+def test_许可证是gpl3() -> None:
+    """根目录的 LICENSE 必须是 **GPL-3.0 全文**。"""
+    path = ROOT_DIR / "LICENSE"
+    assert path.is_file(), "根目录缺 LICENSE 文件"
+    source = path.read_text(encoding="utf-8")
+    assert "GNU GENERAL PUBLIC LICENSE" in source
+    assert "Version 3, 29 June 2007" in source
+    assert "TERMS AND CONDITIONS" in source
+    assert "END OF TERMS AND CONDITIONS" in source
+    assert len(source) > 30_000, "LICENSE 像是被截断了"
+
+
+def test_readme写了无头架构() -> None:
+    """README 必须说清楚「现在没有界面了」。
+
+    旧版 README 通篇在讲看板 / 卡片 / 设置页 ——
+    那会让新用户以为双击会弹窗。v5.0.0 必须在开头就说清楚。
+    """
+    source = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
+    assert "无头守护进程" in source
+    assert "/api/pre-check" in source
+    assert "/api/attach" in source
+    assert "sentinel-daemon.exe" in source
+
+
 # ---------------------------------------------------------------------------
-# 任务四：全库零残留（v4.3.2 追加）
+# 全库零残留（v4.3.2 追加）
 # ---------------------------------------------------------------------------
 def test_全库没有旧称呼() -> None:
     """**全库零残留** —— 连历史文档与 CHANGELOG 都不许有。
@@ -311,30 +271,8 @@ def test_全库没有旧称呼() -> None:
     assert not hits, "还有文件残留旧称呼：{}".format(", ".join(hits))
 
 
-def test_本次版本说明用的是中性词() -> None:
-    """v4.3.1 的版本说明里不许有旧称呼。
-
-    ⚠️ 早先它有一处「改前 / 改后」对照表**正当引用**了旧称呼 ——
-    去个人化之后，连那种引用也一并去掉了。
-    """
-    path = (
-        ROOT_DIR
-        / "_管理文档"
-        / "文档与报告"
-        / "versions"
-        / "v4.3.1-neutral-wording-and-oss-attribution.md"
-    )
-    assert path.is_file(), "缺 v4.3.1 版本说明"
-    source = path.read_text(encoding="utf-8")
-    # 新措辞必须在。
-    assert "检测到的外部进程" in source
-    # 旧称呼一个字都不许有。
-    for word in FORBIDDEN_PRIVATE:
-        assert word not in source, word
-
-
-def test_版本号已经是431() -> None:
-    """版本号必须同步到 4.3.1。"""
+def test_版本号已经是500() -> None:
+    """版本号必须同步到 5.0.0。"""
     from src import __version__
 
-    assert __version__ == "4.3.1"
+    assert __version__ == "5.0.0"

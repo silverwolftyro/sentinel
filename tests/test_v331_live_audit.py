@@ -29,15 +29,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
-
-from fastapi.testclient import TestClient
 
 from src.adapters.mcode import McodeAdapter
 from src.core.engine import ONTRACK_MARKER, SentinelEngine
 from src.core.live_audit import format_clock, summarize_event
-from src.gui.server import (
+from src.core.session_server import (
     AlertStore,
     EventHub,
     Watcher,
@@ -346,88 +343,16 @@ def test_跟随线程会把流水推给前端(tmp_path):
     assert event["session_id"] == "s1"
 
 
-# ---------------------------------------------------------------------------
-# 四、前端：流水区 + 强引导 + 宽容度
-# ---------------------------------------------------------------------------
-def test_模板里有实时审核流水区():
-    """告警面板里要有一块「实时审核流水」。"""
-    html = _read("src", "gui", "templates", "dashboard.html")
-    assert 'id="live-audit"' in html
-    assert 'id="live-audit-lines"' in html
-    assert "实时审核流水" in html
 
 
-def test_流水是独立的一行且卡片不再压它():
-    """流水层是**正常的一行**，告警卡片**不再**靠 z-index 压它。
-
-    ⚠️ v3.5.2 起**彻底废除**了 v3.3.1 的旧设计 ——
-    那时流水被做成 ``position: absolute`` 的背景层，
-    告警卡片靠 ``z-index: 2`` 压在上面，
-    结果两段文字**直接叠在一起**，完全没法看。
-    这一版改成 Flex 纵向布局，上下分离，各占各的行。
-    """
-    css = _read("src", "gui", "static", "dashboard.css")
-    assert ".live-audit {" in css
-    assert ".live-audit__line {" in css
-
-    # ⚠️ 规则体里**含注释** —— 而注释里恰好提到了 z-index，
-    #    所以先把注释剥掉再断言（不然会把注释当成声明）。
-    def _strip_comments(text):
-        return re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-
-    # 流水层不再是绝对定位的背景层。
-    audit_block = _strip_comments(
-        css.split(".live-audit {", 1)[1].split("}", 1)[0]
-    )
-    assert "position: absolute" not in audit_block
-    assert "position: static;" in audit_block
-
-    # 告警卡片不再有 z-index —— 中间面板里不该有层级打架。
-    card_block = _strip_comments(
-        css.split(".alert-card {", 1)[1].split("}", 1)[0]
-    )
-    assert "z-index" not in card_block
 
 
-def test_前端会处理on_track事件():
-    """SSE 的 ``on_track`` 事件要有人接。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    assert 'event.type === "on_track"' in js
-    assert "appendLiveAudit" in js
-    assert "renderLiveAudit" in js
 
 
-def test_未设置会变成橘黄高亮():
-    """没目标时，「未设置」不能只是灰字。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    css = _read("src", "gui", "static", "dashboard.css")
-    html = _read("src", "gui", "templates", "dashboard.html")
-
-    assert "watch-target__source--none" in js
-    assert ".watch-target__source--none {" in css
-    assert "var(--drift)" in css
-    # 气泡常驻，不是「鼠标移上去才有」。
-    assert 'id="watch-goal-nudge"' in html
-    assert ".watch-target__nudge {" in css
 
 
-def test_气泡文案是任务书原话():
-    """引导语要一字不差 —— 用户照着做才行。"""
-    text = "雷达找不到初始目标，请在此手动输入任务目标，以启用漂移监控。"
-    js = _read("src", "gui", "static", "dashboard.js")
-    html = _read("src", "gui", "templates", "dashboard.html")
-    assert text in js
-    assert text in html
 
 
-def test_未绑定进程有悬停提示():
-    """``[未绑定进程]`` 的悬停提示要说清楚「为什么」和「怎么办」。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    assert "未找到对应进程。如需拦截，请使用 --agent 模式启动" in js
-    assert "或确保 Agent 命令行包含日志路径。" in js
-    assert "UNBOUND_PID_HINT" in js
-    # 也要说清楚「告警照常」—— 免得用户以为整个哨兵瘫了。
-    assert "L1/L2 告警与推送不受影响" in js
 
 
 # ---------------------------------------------------------------------------
@@ -458,111 +383,10 @@ def test_没有PID也照样告警并推送(tmp_path):
     assert notifier.alerts, "没有 PID 也要推得出通知"
 
 
-def test_没绑定的会话不提供武装能力(tmp_path):
-    """没有 PID → 武装开关不可用（但**不是**因为告警坏了）。"""
-    from src.gui.server import create_app
-
-    watch = tmp_path / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = tmp_path / "alert.log"
-    alert.write_text("", encoding="utf-8")
-
-    def factory(info):
-        """假工厂：挂载一个**没有进程绑定**的会话。"""
-        return {
-            "ok": True,
-            "alert_log_path": str(tmp_path / "attached.alerts.jsonl"),
-            "scan_callback": lambda target: {"ok": True, "counts": {}},
-            "workdir": "",
-            "tail_runner": None,
-        }
-
-    app = create_app(
-        str(watch),
-        str(alert),
-        start_watcher=False,
-        attach_factory=factory,
-    )
-    client = TestClient(app)
-
-    log = tmp_path / "mcode.jsonl"
-    _write_jsonl(log, [
-        {"type": "tool_call", "tool_call": {
-            "name": "Bash", "arguments": {"command": "ls"}}},
-    ])
-    attached = client.post("/api/attach", json={"path": str(log)})
-    assert attached.status_code == 200
-    session = attached.json()["session"]
-
-    assert session["process_bound"] is False
-    assert session["pid"] == 0
-    # 武装不可用 —— 但会话本身照常存在、照常被监控。
-    assert session["arm_available"] is False
-    assert session["state"] in ("starting", "running", "idle")
 
 
-# ---------------------------------------------------------------------------
-# 六、手动锚定后，顶部自动变成「手动锚定」
-# ---------------------------------------------------------------------------
-def test_设定目标后来源是手动锚定(tmp_path):
-    """用户点「设定」→ 顶部的目标来源变成「手动锚定」。"""
-    from src.gui.server import create_app
-
-    watch = tmp_path / "watch.jsonl"
-    watch.write_text("", encoding="utf-8")
-    alert = tmp_path / "alert.log"
-    alert.write_text("", encoding="utf-8")
-
-    def factory(info):
-        """假工厂。"""
-        return {
-            "ok": True,
-            "alert_log_path": str(tmp_path / "attached.alerts.jsonl"),
-            "scan_callback": lambda target: {"ok": True, "counts": {}},
-            "workdir": "",
-            "tail_runner": None,
-        }
-
-    app = create_app(
-        str(watch),
-        str(alert),
-        start_watcher=False,
-        attach_factory=factory,
-    )
-    client = TestClient(app)
-
-    log = tmp_path / "mcode.jsonl"
-    _write_jsonl(log, [
-        {"type": "tool_call", "tool_call": {
-            "name": "Bash", "arguments": {"command": "ls"}}},
-    ])
-    attached = client.post("/api/attach", json={"path": str(log)})
-    session_id = attached.json()["session"]["id"]
-
-    before = client.get(
-        "/api/sessions/{}/watch_target".format(session_id)
-    ).json()
-    assert before["goal_source"] == "none"
-    assert before["goal_source_label"] == "未设置"
-
-    client.post(
-        "/api/sessions/{}/task_goal".format(session_id),
-        json={"goal": "重构 auth 模块并修复登录 bug"},
-    )
-
-    after = client.get(
-        "/api/sessions/{}/watch_target".format(session_id)
-    ).json()
-    assert after["goal_source"] == "explicit"
-    assert after["goal_source_label"] == "手动锚定"
-    assert after["goal"] == "重构 auth 模块并修复登录 bug"
 
 
-def test_前端设定后立刻刷新顶部状态():
-    """点了「设定」→ 顶部状态**立刻**跟上（不等 SSE 绕一圈）。"""
-    js = _read("src", "gui", "static", "dashboard.js")
-    block = js.split("function submitTaskGoal", 1)[1].split("\n  }", 1)[0]
-    assert "loadSessionTarget" in block or "loadWatchTarget" in block
 
 
 # ---------------------------------------------------------------------------

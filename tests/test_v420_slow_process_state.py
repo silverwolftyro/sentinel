@@ -94,56 +94,16 @@ def _dashboard_css() -> str:
     return Path(STATIC_DIR, "dashboard.css").read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# 任务三：慢/待验证 → 疑似挂起
-# ---------------------------------------------------------------------------
-def test_慢状态阈值是10秒() -> None:
-    """任务要求：启动后 10 秒没有输出就提示疑似挂起。"""
-    source = _dashboard_js()
-    assert "var SLOW_PROCESS_SECONDS = 10;" in source
-    assert "var SLOW_PROCESS_SECONDS = 60;" not in source
 
 
-def test_慢状态徽章提示疑似挂起() -> None:
-    """提示语必须是「疑似挂起」—— 断言，不是下结论。"""
-    source = _dashboard_js()
-    assert "疑似挂起" in source
-    assert "慢/待验证" in source
 
 
-def test_慢状态不再显示运行中() -> None:
-    """这条路径**不能**再显示「运行中」—— 那会让人一直等。"""
-    source = _dashboard_js()
-    marker = "} else if (isSlowProcess(item)) {"
-    assert marker in source
-    block = source.split(marker)[1].split("} else {")[0]
-    assert "疑似挂起" in block
-    assert "运行中" not in block
 
 
-def test_慢状态用灰色而不是警示色() -> None:
-    """10 秒只能说明「还没动静」—— 用中性灰，不制造恐慌。"""
-    css = _dashboard_css()
-    block = css.split(".attach__badge--slow {")[1].split("}")[0]
-    assert "var(--text-dim)" in block
-    # 琥珀警示色不能留在这一档上。
-    assert "#f0b45a" not in block
-    assert "240, 180, 90" not in block
 
 
-def test_慢状态提示列出三种可能() -> None:
-    """tooltip 要把「未登录挂起 / 还在初始化 / 不写日志」都说到。"""
-    source = _dashboard_js()
-    assert "静默挂起" in source
-    assert "初始化" in source
-    assert "stdout" in source
 
 
-def test_慢状态判据仍然是活着且没有日志() -> None:
-    """判据本身不能被改坏：进程死了就不算「慢」。"""
-    source = _dashboard_js()
-    assert "item.attachable || item.attached" in source
-    assert "alive >= SLOW_PROCESS_SECONDS" in source
 
 
 # ---------------------------------------------------------------------------

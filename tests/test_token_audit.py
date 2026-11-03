@@ -19,6 +19,11 @@ from typing import Any, Dict, List
 import pytest
 
 from src.core.engine import TOKEN_MARKER, SentinelEngine
+from src.core.session_server import (
+    AlertStore,
+    normalize_alert,
+    parse_token_line,
+)
 from src.core.tokens import (
     DEFAULT_REMAINING_STEPS,
     TokenLedger,
@@ -26,7 +31,6 @@ from src.core.tokens import (
     extract_usage,
     format_token_count,
 )
-from src.gui.server import AlertStore, normalize_alert, parse_token_line
 
 
 # ---------------------------------------------------------------------------
@@ -397,7 +401,7 @@ class TestDashboardTokenWiring:
         而直接丢弃 —— 结果就是**多路模式下 Token 计数器永远停在 0**。
         单路模式看不出来（没有「当前会话」的概念）。
         """
-        from src.gui.server import EventHub, Watcher
+        from src.core.session_server import EventHub, Watcher
 
         hub = EventHub()
         queue = hub.subscribe()
