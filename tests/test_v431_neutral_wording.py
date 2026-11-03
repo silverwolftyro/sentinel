@@ -271,8 +271,11 @@ def test_全库没有旧称呼() -> None:
     assert not hits, "还有文件残留旧称呼：{}".format(", ".join(hits))
 
 
-def test_版本号已经是500() -> None:
-    """版本号必须同步到 5.0.0。"""
+def test_版本号已经是501() -> None:
+    """版本号必须同步到 5.0.1。
+
+    ⚠️ v5.0.1 起改的是「强制单例锁下沉 + 两个同名进程归因」。
+    """
     from src import __version__
 
-    assert __version__ == "5.0.0"
+    assert __version__ == "5.0.1"

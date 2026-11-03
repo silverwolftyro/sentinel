@@ -420,8 +420,20 @@ class Test打包:
         assert "psutil" in source
 
     def test_入口脚本在脚本目录(self):
+        """PyInstaller 入口必须落在 ``_构建与发布/scripts/`` 里。
+
+        ⚠️ v5.0.1：入口从 ``sentinel_entry.py`` 换成了
+        ``daemon_bootstrap.py`` —— 后者更小，**先抢单例锁再加载大模块**。
+        所以这里改成**动态**断言：写死文件名，每改一次入口就得改一遍测试。
+        """
         source = _read("_构建与发布", "scripts", "build_exe.py")
-        assert "sentinel_entry.py" in source
+        assert "ENTRY_SCRIPT" in source
+        assert "daemon_bootstrap.py" in source
+        assert os.path.exists(
+            os.path.join(
+                ROOT, "_构建与发布", "scripts", "daemon_bootstrap.py"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------

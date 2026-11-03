@@ -453,9 +453,27 @@ def serve(
 def main(argv: Optional[List[str]] = None) -> int:
     """命令行入口。
 
+    ⚠️ v5.0.1：**单例锁下沉到这里** —— 这是无头守护进程的绝对入口。
+    抢不到锁就打印提示并立刻退出（退出码 0：已有实例在跑是一次
+    **成功的空操作**，不是启动失败）。
+
+    ⚠️ 打包版走的是更早的 ``daemon_bootstrap`` 入口 ——
+    它在**任何大模块被加载之前**就抢好了锁，所以到了这里
+    拿到的必然是**同一把**（进程内幂等），不会自己把自己拦下来。
+
     :param argv: 参数列表；``None`` 时取 ``sys.argv[1:]``。
     :return: 退出码。
     """
+    from src.core.singleton import (
+        ALREADY_RUNNING_EXIT_CODE,
+        acquire_single_instance,
+        report_already_running,
+    )
+
+    if acquire_single_instance() is None:
+        report_already_running()
+        return ALREADY_RUNNING_EXIT_CODE
+
     import argparse
 
     parser = argparse.ArgumentParser(

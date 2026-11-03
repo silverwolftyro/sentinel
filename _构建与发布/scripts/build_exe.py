@@ -53,7 +53,12 @@ BUILD_DIR = os.path.join(_ROOT, "_构建与发布", "build")
 LOG_PATH = os.path.join(DIST_DIR, "build_exe.log")
 
 #: 入口脚本。
-ENTRY_SCRIPT = os.path.join(_HERE, "sentinel_entry.py")
+#:
+#: ⚠️ v5.0.1：入口改成了 :mod:`daemon_bootstrap` —— 它只做三件事：
+#:    ① 把 ``sys.path`` 摆好；② **抢进程级单例锁**；
+#:    ③ 抢到了才 import :mod:`sentinel_entry`。
+#:    这样单例锁落在**任何大模块被加载之前**。
+ENTRY_SCRIPT = os.path.join(_HERE, "daemon_bootstrap.py")
 
 #: 产物 exe 的文件名（v5.0.0 起）。
 #:
@@ -169,6 +174,11 @@ HIDDEN_IMPORTS = (
     "src.daemon.precheck",
     "src.daemon.server",
     "src.daemon.worker",
+    # v5.0.1：进程级单例锁（内核层）——
+    # 入口 ``daemon_bootstrap`` 在**任何大模块之前**就要用它，
+    # 必须显式点名，否则打包版可能退化成「没有单例锁」。
+    # 漏掉的代价：打包版 exe 能被无限双开 —— 而且**不会报错**。
+    "src.core.singleton",
     # v5.0.0：面板的 Web 框架那一套（fastapi / uvicorn / jinja2）**已剥离** ——
     # 接口改用标准库 ``http.server``，所以这几个包**不再**需要点名。
 )

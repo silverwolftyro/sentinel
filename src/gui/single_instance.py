@@ -60,14 +60,26 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
-import sys
-import tempfile
 from typing import Optional
+
+# v5.0.1：单例锁的**实现**搬到 :mod:`src.core.singleton` —— 那是内核层，
+# 无头守护进程不该依赖一个 GUI 包。这里只做**转手**：
+# ⚠️ 必须共用**同一个**缓存 —— 入口会在「最早期引导」与「正式入口」
+#    两处上锁，它们在同一个进程里，各自一份缓存会把自己拦下来。
+from src.core.singleton import (  # noqa: E402
+    LEGACY_SINGLE_INSTANCE_NAMES,
+    SINGLE_INSTANCE_NAME,
+    SingleInstance,
+    acquire_single_instance,
+    release_single_instance,
+)
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "ALREADY_RUNNING_EXIT_CODE",
+    "LEGACY_SINGLE_INSTANCE_NAMES",
+    "SINGLE_INSTANCE_NAME",
     "ProcessGroup",
     "SingleInstance",
     "acquire_single_instance",
@@ -77,18 +89,23 @@ __all__ = [
     "show_already_running_dialog",
 ]
 
-#: 命名互斥体的名字。
+#: 命名互斥体的名字 —— **v5.0.1 起单一真相在**
+#: :mod:`src.core.singleton`，上面已经 import 过来了。
 #:
 #: ⚠️ **不带 ``Global\\`` 前缀** —— 全局命名空间需要
 #: ``SeCreateGlobalPrivilege`` 特权，普通用户建不出来。
 #: 不带前缀的互斥体落在**当前会话**的命名空间里，
-#: 对「桌面端应用只能开一个」这个需求**完全够用**。
+#: 对「一个会话只允许一个哨兵」这个需求**完全够用**。
 #:
-#: ⚠️ 源码模式（``启动哨兵.bat``）与打包模式（``sentinel.exe``）
-#:    **必须用同一个名字** —— 否则两个模式能同时跑。
-SINGLE_INSTANCE_NAME = "SentinelDesktopSingleInstance"
+#: ⚠️ 源码模式与打包模式**必须用同一个名字** —— 否则两个模式能同时跑。
 
 #: 第二个实例的退出码 —— 与「正常退出（0）」「启动失败（2）」区分开。
+#:
+#: ⚠️ v5.0.1：这是**接管模式**（launcher）用的退出码，保持 3 不变 ——
+#:    v3.8.0 起就有这个约定，回归测试也钉住了它。
+#:    **无头守护进程**那条路用的是
+#:    :data:`src.core.singleton.ALREADY_RUNNING_EXIT_CODE`（0）——
+#:    对守护进程来说「已经有实例在跑」是一次**成功的空操作**。
 ALREADY_RUNNING_EXIT_CODE = 3
 
 #: Windows 的 ``ERROR_ALREADY_EXISTS``。
@@ -159,163 +176,10 @@ class _JobObjectExtendedLimitInformation(ctypes.Structure):
 # ---------------------------------------------------------------------------
 # 单例锁
 # ---------------------------------------------------------------------------
-class SingleInstance:
-    """单例锁（Windows 命名互斥体 / 其它平台文件锁）。
-
-    :param name: 互斥体名字。
-    """
-
-    def __init__(self, name: str = SINGLE_INSTANCE_NAME) -> None:
-        self.name = str(name or SINGLE_INSTANCE_NAME)
-        #: 生效的机制：``mutex`` / ``file`` / ``unavailable``。
-        self.mode = ""
-        #: 是不是真的拿到了锁。
-        self.acquired = False
-        self._handle: Optional[int] = None
-        self._lock_file = None
-
-    # -- 对外 -------------------------------------------------------------
-    def acquire(self) -> bool:
-        """尝试拿到锁。
-
-        :return: 拿到（或者**无法判断**因而放行）返回 ``True``；
-            **别的进程已经在跑**返回 ``False``。
-        """
-        if os.name == "nt":
-            return self._acquire_mutex()
-        return self._acquire_file_lock()
-
-    def release(self) -> None:
-        """释放锁（进程退出时**不需要**调用 —— 内核会自动收）。"""
-        if self._handle is not None:
-            try:
-                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-                kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-                kernel32.CloseHandle.restype = ctypes.c_int
-                kernel32.CloseHandle(ctypes.c_void_p(self._handle))
-            except (AttributeError, OSError) as exc:
-                logger.debug("关闭互斥体失败：%s: %s", type(exc).__name__, exc)
-            self._handle = None
-        if self._lock_file is not None:
-            try:
-                self._lock_file.close()
-            except OSError as exc:
-                logger.debug("关闭锁文件失败：%s: %s", type(exc).__name__, exc)
-            self._lock_file = None
-        self.acquired = False
-
-    # -- 内部：Windows ----------------------------------------------------
-    def _acquire_mutex(self) -> bool:
-        """用命名互斥体做单例（Windows）。
-
-        :return: 拿到锁返回 ``True``；已被别人占用返回 ``False``。
-        """
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        create = kernel32.CreateMutexW
-        create.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
-        create.restype = ctypes.c_void_p
-        handle = create(None, False, self.name)
-        if not handle:
-            # 建不出来 —— **无法判断**是不是已经有实例在跑。
-            # 这时候**放行**（宁可双开，也别让哨兵永远起不来）。
-            logger.warning(
-                "创建单例互斥体失败（Windows 错误 %s）—— 本次不做单例拦截。",
-                ctypes.get_last_error(),
-            )
-            self.mode = "unavailable"
-            self.acquired = True
-            return True
-        if ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
-            # 已经有实例了 —— 句柄是从**别人**那儿拿到的引用，得还回去。
-            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-            kernel32.CloseHandle.restype = ctypes.c_int
-            kernel32.CloseHandle(ctypes.c_void_p(handle))
-            self.mode = "mutex"
-            self.acquired = False
-            return False
-        self._handle = int(handle)
-        self.mode = "mutex"
-        self.acquired = True
-        logger.info("已取得单例互斥体：%s", self.name)
-        return True
-
-    # -- 内部：其它平台 ---------------------------------------------------
-    def _acquire_file_lock(self) -> bool:
-        """用文件锁做单例（Linux / macOS）。
-
-        :return: 拿到锁返回 ``True``；已被别人占用返回 ``False``。
-        """
-        try:
-            import fcntl
-        except ImportError:
-            logger.warning("本平台没有 fcntl —— 本次不做单例拦截。")
-            self.mode = "unavailable"
-            self.acquired = True
-            return True
-        path = os.path.join(
-            tempfile.gettempdir(), "sentinel-desktop-single-instance.lock"
-        )
-        try:
-            # ⚠️ 故意**不**用 with —— 锁文件要**一直**开着，
-            #    进程退出时内核才自动释放 flock。
-            handle = open(path, "a+b")  # noqa: SIM115 —— 锁文件要活到进程结束
-        except OSError as exc:
-            logger.warning(
-                "打开单例锁文件失败（%s: %s）—— 本次不做单例拦截。",
-                type(exc).__name__,
-                exc,
-            )
-            self.mode = "unavailable"
-            self.acquired = True
-            return True
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            handle.close()
-            self.mode = "file"
-            self.acquired = False
-            return False
-        self._lock_file = handle
-        self.mode = "file"
-        self.acquired = True
-        logger.info("已取得单例文件锁：%s", path)
-        return True
-
-
-#: 进程内**唯一**的单例锁 —— 拿过一次就不再重复拿。
-_SINGLETON: Optional[SingleInstance] = None
-
-
-def acquire_single_instance(
-    name: str = SINGLE_INSTANCE_NAME,
-) -> Optional[SingleInstance]:
-    """拿到单例锁。
-
-    ⚠️ **进程内幂等** —— 同一进程重复调用拿到的是**同一个**对象。
-    这一点很关键：``sentinel_entry.py`` 会转手调用
-    ``run_with_sentinel.main()``，两处都要上锁，
-    但它们在**同一个进程**里 —— 不能自己把自己拦下来。
-
-    :param name: 互斥体名字。
-    :return: 拿到锁返回对象；**别的进程已经在跑**返回 ``None``。
-    """
-    global _SINGLETON
-    if _SINGLETON is not None:
-        return _SINGLETON
-    guard = SingleInstance(name)
-    if not guard.acquire():
-        return None
-    _SINGLETON = guard
-    return guard
-
-
-def release_single_instance() -> None:
-    """释放单例锁（测试用；正常退出不需要调用）。"""
-    global _SINGLETON
-    if _SINGLETON is not None:
-        _SINGLETON.release()
-    _SINGLETON = None
-
+# ⚠️ v5.0.1：**实现**已经搬到 :mod:`src.core.singleton`（内核层）——
+#    无头守护进程不该依赖一个 GUI 包。这里只保留**转手**的 import
+#    （见文件头）：单一实现、单一缓存，源码模式与打包模式共用同一个
+#    互斥体名字。
 
 # ---------------------------------------------------------------------------
 # 进程树同生共死
@@ -443,17 +307,28 @@ def install_process_group() -> ProcessGroup:
 def already_running_message() -> str:
     """「哨兵已在运行中」这句提示。
 
+    ⚠️ v5.0.1：**实现**搬到 :mod:`src.core.singleton` —— 文案也跟着改了：
+    v5.0.0 已经把前端整体剥离，哨兵是**无头守护进程**，
+    压根没有托盘图标，旧文案会让用户去找一个不存在的东西。
+
     :return: 提示正文。
     """
-    return (
-        "哨兵已在运行中。\n"
-        "\n"
-        "不会启动第二个实例 —— 两个哨兵会互相抢端口、抢托盘图标、\n"
-        "抢同一份日志。\n"
-        "\n"
-        "请到系统托盘（右下角）找到哨兵图标，右键 →【彻底退出】，\n"
-        "再重新启动。"
-    )
+    from src.core.singleton import already_running_message as _message
+
+    return _message()
+
+
+def _dialog_enabled() -> bool:
+    """「已经在跑」的弹窗是不是开着。
+
+    ⚠️ v5.0.1：**默认关**。无头守护进程在后台运行时弹窗毫无意义，
+    而且那个框会挂 10 秒（``MessageBoxTimeoutW`` 的超时），
+    让「第二个实例」在任务管理器里**赖着不走** —— 看着就像双开。
+
+    :return: 该弹窗返回 ``True``。
+    """
+    flag = str(os.environ.get("SENTINEL_SINGLE_INSTANCE_DIALOG", "0")).strip()
+    return flag not in ("0", "false", "False", "no", "")
 
 
 def show_already_running_dialog(
@@ -474,8 +349,7 @@ def show_already_running_dialog(
     """
     if os.name != "nt":
         return False
-    flag = str(os.environ.get("SENTINEL_SINGLE_INSTANCE_DIALOG", "1")).strip()
-    if flag in ("0", "false", "False", "no"):
+    if not _dialog_enabled():
         return False
     text = message if message is not None else already_running_message()
     try:
@@ -509,19 +383,19 @@ def show_already_running_dialog(
 
 
 def report_already_running(stream: Optional[object] = None) -> None:
-    """把「哨兵已在运行中」这条提示送到终端（并弹窗）。
+    """把「哨兵已在运行中」这条提示送到终端（**默认不弹窗**）。
+
+    ⚠️ v5.0.1：**默认不再弹模态框**。无头守护进程在后台运行时
+    弹窗毫无意义；而且那个框默认会**挂 10 秒**
+    （``MessageBoxTimeoutW`` 的超时），让「第二个实例」在任务管理器里
+    **赖着不走** —— 看起来就像双开，这正是 v5.0.0 之后要修的毛病。
+
+    想看弹窗可以显式打开：``SENTINEL_SINGLE_INSTANCE_DIALOG=1``。
 
     :param stream: 输出流；``None`` 用标准输出。
     """
-    out = stream if stream is not None else sys.stdout
-    lines = [
-        "[SENTINEL] 哨兵已在运行中 —— 不会启动第二个实例。",
-        "           请到系统托盘（右下角）右键哨兵图标 →【彻底退出】，"
-        "然后再试。",
-    ]
-    for line in lines:
-        try:
-            print(line, file=out, flush=True)
-        except (OSError, ValueError, UnicodeEncodeError) as exc:
-            logger.info("提示输出失败：%s: %s", type(exc).__name__, exc)
-    show_already_running_dialog()
+    from src.core.singleton import report_already_running as _report
+
+    _report(stream)
+    if _dialog_enabled():
+        show_already_running_dialog()
