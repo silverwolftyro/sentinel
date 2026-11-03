@@ -179,6 +179,31 @@ HIDDEN_IMPORTS = (
     # 必须显式点名，否则打包版可能退化成「没有单例锁」。
     # 漏掉的代价：打包版 exe 能被无限双开 —— 而且**不会报错**。
     "src.core.singleton",
+    # v5.0.2：Agent 数据层 + 进程树扫描 —— **打包版守护进程起不来的根因**。
+    #
+    # 现象：``sentinel-daemon.exe`` 报
+    #     ImportError: cannot import name 'build_argv' from 'src.agents'
+    #     (unknown location)
+    # 机理（两条链叠在一起）：
+    #   ① ``run_with_sentinel.py`` 是以 **--add-data** 打进包的**数据文件**，
+    #      不是可导入模块 → PyInstaller 的静态分析**根本不分析它**，
+    #      于是它函数里的 ``from src.agents import build_argv, load_agents``
+    #      （:445）从来没人告诉 PyInstaller「这俩要打包」。
+    #   ② ``src/proc_tree.py`` 是**函数内**导入 ``src.agents`` 的
+    #      （模块级 ``from src.agents import ...``，:80），
+    #      而 ``src/proc_tree`` 自己也只被函数内导入
+    #      （``src/core/session_server.py:2624``）→ 整条链静态分析看不见。
+    # 结果：exe 里**只有** ``src/agents/cloud_agents.json`` 这个数据文件，
+    # 没有 ``src/agents/__init__.py`` → 运行时 ``import src.agents``
+    # 落到文件系统目录上，变成 **namespace package**（"unknown location"）
+    # → ``build_argv`` 自然找不到。
+    #
+    # ⚠️ 漏掉的代价是这一档里最狠的：**打包成功、启动即崩**，
+    # 而且崩在守护进程入口，exe 连「已启动」都打印不出来。
+    "src.agents",
+    "src.agents.auth",
+    "src.agents.launcher",
+    "src.proc_tree",
     # v5.0.0：面板的 Web 框架那一套（fastapi / uvicorn / jinja2）**已剥离** ——
     # 接口改用标准库 ``http.server``，所以这几个包**不再**需要点名。
 )

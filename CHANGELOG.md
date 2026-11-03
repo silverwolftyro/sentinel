@@ -8,6 +8,39 @@
 > **约定**：`CHANGELOG.md` 是版本号的唯一事实来源。
 > 任何一次迭代都必须在本文件记录并递增版本号，同时在 `_管理文档/文档与报告/versions/` 下补充对应的版本说明文档。
 
+## [v5.0.2] - 2026-11-03 - 修打包漏模块：接管模式启动即崩
+
+> **修一个只有打包版才会犯的错。** 源码跑一切正常，**打包后的 exe 在「接管模式」下启动即崩**：
+> `ImportError: cannot import name 'build_argv' from 'src.agents' (unknown location)`。
+> 这是 v5.0.1 验收时漏掉的一环 —— 当时只验了 `--daemon` 路径。
+
+### 修复
+
+- **打包版 exe 接管模式启动即崩** —— 根因是**静态分析看不见的那条链**：
+  - `run_with_sentinel.py` 是以 `--add-data` 打进包的**数据文件**，
+    **不是可导入模块** → PyInstaller 根本不分析它 →
+    它函数里的 `from src.agents import build_argv, load_agents`（`:445`）
+    从来没人告诉 PyInstaller「这俩要打包」；
+  - `src/proc_tree.py` 是**函数内**导入 `src.agents` 的（模块级 `from src.agents import ...`，`:80`），
+    而 `src.proc_tree` 自己也只被函数内导入（`src/core/session_server.py:2624`）；
+  - 结果：exe 里**只有** `src/agents/cloud_agents.json` 这个数据文件，
+    没有 `src/agents/__init__.py` → 运行时 `import src.agents` 落到文件系统目录上，
+    变成 **namespace package**（报错里的 "unknown location"）→ `build_argv` 自然找不到。
+  - 修法：把 `src.agents`、`src.agents.auth`、`src.agents.launcher`、`src.proc_tree`
+    显式点名进 `HIDDEN_IMPORTS`（这个机制本来就是为「函数内动态导入」准备的）。
+
+### 验证
+
+- 三组工作目录对照（仓库根 / 无关空目录 / 仿 `_MEIPASS`）—— 全都能起：
+  `/api/health` → `{"status": "running", "version": "5.0.2", "mode": "headless", ...}`。
+- 实机三路会话隔离复测：三路目标互不串台、无目标那路 `l2_sleeping=True`、
+  红线预检 `{"action": "block", "rule_id": "catastrophic_root_delete"}`。
+- 回归 **1762 passed / 1 skipped**，ruff 零告警。
+
+### 已知边界
+
+- 本版**没有**改动任何审查逻辑、规则集或协议 —— 只改了打包脚本的模块清单。
+
 ## [v5.0.1] - 2026-11-03 - 强制单例锁下沉与「两个同名进程」归因
 
 > **修一个被误判了的现象。** 打包版双击后任务管理器里出现两个同名进程，

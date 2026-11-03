@@ -49,7 +49,7 @@ from typing import List, Optional
 try:
     from src import __version__  # type: ignore
 except Exception:  # noqa: BLE001 —— 打包解包顺序异常时的兜底
-    __version__ = "5.0.1"
+    __version__ = "5.0.2"
 
 try:
     # v3.8.0：第二个实例的退出码 —— 与「正常退出（0）」「启动失败（2）」区分。

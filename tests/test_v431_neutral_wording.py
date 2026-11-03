@@ -278,4 +278,4 @@ def test_版本号已经是501() -> None:
     """
     from src import __version__
 
-    assert __version__ == "5.0.1"
+    assert __version__ == "5.0.2"
