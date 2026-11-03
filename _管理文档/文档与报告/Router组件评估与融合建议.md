@@ -2,8 +2,24 @@
 
 > **性质**：纯静态代码考古（只读），未运行任何被测代码、未安装任何依赖、未修改 `临时/` 下任何源文件。
 > **考古对象**：`临时/` 下 4 个 DeepSeek Harness 生态的 Router 组件。
-> **评估目的**：判断哪些「任务分类与调度」算法可以复现进哨兵 v5.0.0 的**纯 Python 无头内核**。
+> **评估目的**：判断哪些「**任务分类与调度**」与「**watchdog（看门狗）**」算法
+> 可以复现进哨兵 v5.0.1 的**纯 Python 无头内核**。
 > **取证时间**：2026-11-03。
+>
+> **章节索引**
+>
+> | 维度 | 章节 |
+> |---|---|
+> | 目录摸底（技术栈 / 依赖 / 核心问题） | §1 |
+> | **意图分类** | §2.1 |
+> | **路由决策** | §2.2 |
+> | **队列与优先级** | §2.3 |
+> | **事件订阅** | §2.4 |
+> | **watchdog 核心逻辑**（核心作用 + 实践方式） | **§2.5** |
+> | 机制对比表 | §3 |
+> | 可用资产提取 | §4 |
+> | 不兼容警告 | §5 |
+> | 落地建议（S 阶段 / W 阶段） | §6 |
 
 ---
 
@@ -18,6 +34,9 @@
 | 5 | **哨兵现状**：优先级队列**已经写好了但刻意没接线**到引擎（`src/core/priority_queue.py` 顶部注释明写「本版刻意不接线到 SentinelEngine」）。`TaskRouter` 的价值不是造队列，而是**补上「分派」这一层**。 | 先接线，再谈新功能 |
 | 6 | **三处结构性不可照抄**：Cordis 中间件式扩展点、Router↔Host↔Worker 三方事件拓扑、evidence 的「宿主原生性」假设。 | 见 §5.3 |
 | 7 | **`harnessrouter` 的 `runner/` 是全仓唯一与哨兵内核形态完全一致的 Python 实现**（`http.server` + `threading` + 手写 chunked SSE）。 | 抄它，不抄 FastAPI 部分 |
+| 8 | **watchdog 维度：四家有三种哲学** —— 活性探测（哨兵现有）、心跳超时（super-agent / harnessrouter）、预算护栏（omni-router），`dsh-router` 完全没有。**互补，不是替代。** | 见 §2.5 |
+| 9 | **watchdog 抄谁**：`deepseek-super-agent` 的 `src/watchdog/`（**唯一成体系**：三态判定 + nudge→fail 两阶段 + `watchdogIdle` 健康信号）；`harnessrouter` 的**三重地板**（防误杀）。 | 见 §4.9 / §6.5 |
+| 10 | **哨兵 watchdog 的最大缺口**：现有 `engine_watchdog.py` 只探活**本地推理引擎**，**不监督 Agent 会话**——而那才是「跑偏/卡死」发生的地方。 | 补 §6.5 的 W 阶段 |
 
 ---
 
@@ -227,6 +246,234 @@ recordCapabilityOutcome(): EMA 更新成功率
 
 ---
 
+### 2.5 watchdog（看门狗）核心逻辑
+
+#### 2.5.0 先行结论：四家有**三种** watchdog 哲学，外加一个「没有」
+
+| 哲学 | 判据 | 动作 | 谁 |
+|---|---|---|---|
+| **活性探测型**（liveness probe） | 主动问「你还活着吗」 | 掉线 → 告警 → 可选重启 | **哨兵现有**（`engine_watchdog.py`）、harnessrouter 的 `_wait_alive` |
+| **心跳超时型**（heartbeat lease） | 「多久没收到心跳 = 死了」 | 判陈旧 → **轻推一次** → 升级为失败 | **super-agent**、harnessrouter 的 lease + sweep |
+| **预算护栏型**（budget guard） | 「资源/步数/墙钟用完 = 停」 | 直接停，**不探测** | **dsh-omni-router**（8 维预算） |
+| **（无）** | — | — | **dsh-router**（只有单次 HTTP 15s 超时） |
+
+⚠️ **这三者互补，不是替代关系。**
+哨兵目前只有第一种；**「判不动」比「判探不到」更可靠**，而守护型 watchdog 恰恰最擅长前者。
+
+---
+
+#### 2.5.1 `deepseek-super-agent`：唯一成体系的 watchdog
+
+**核心作用**：监督「**派出去还没回来的任务**」——
+它监督的**不是某个进程，是一条 assignment**（任务分派记录）。
+它回答三个问题：
+
+1. 派出去的活儿**还动吗**？（心跳）
+2. 它**是在干活还是在卡住**？（失败次数）
+3. 它**还在原来的范围内吗**？（目标漂移）
+
+**三态判定**（`src/watchdog/watchdog.ts`）：
+
+| 判定 | 条件 | 证据 |
+|---|---|---|
+| `stale` | `now - max(报告时间, 开始时间) > stuckMs`（默认 60s） | `watchdog.ts:39-49` |
+| `failed-jobs` | 同一 ticket 失败 job ≥ `failAfterFailedJobs`（默认 2） | `watchdog.ts:40-43` |
+| `goal-drift` | 最新报告命中漂移标记词 | `watchdog.ts:62-73` |
+
+**本轮最该抄的三条设计**：
+
+1. **人为暂停豁免**（`watchdog.ts:36-37`）
+   > `// A human pause is intentional idle time, not a stuck worker.`
+
+   → `ticket.collab?.paused` 的任务**直接跳过**。用户说「我先放着」不是它卡住了。
+
+2. **报告进展 ≠ 豁免**（`watchdog.ts:45-46`）
+   > `// A progress report is a heartbeat, not an exemption. A worker that reports "still working" and then hangs must still be detected.`
+
+   → 「我还在干」**只是心跳，不是免死金牌**。
+   这条被写进了数据模型的不变量（`src/shared/types.ts:142`）：
+   *"A progress report is a heartbeat, not a terminal stop."*
+
+3. **两阶段升级：nudge → fail**（`watchdog.ts:117-127` / `:135-142` / `:183-198`）
+   → 第一次检测到：**nudge**（往会话日志追加一条 `role:'user', kind:'nudge'` 的消息，**不杀进程**）；
+   第二次仍卡：**fail**。
+   → **每个 assignment 只 nudge 一次**（`nudged` Set 保证幂等，不反复骚扰）。
+   → 目标漂移走**独立通道** `nudgeDrift`（`drifted` Set）——处置策略不同。
+
+**实践方式（它到底怎么跑起来的）**：
+
+| 环节 | 实现 | 证据 |
+|---|---|---|
+| **谁在驱动** | 一个**守护脉冲**：`start()` 先立刻 `tick()` 一次，再 `setInterval(() => this.tick(), intervalMs)` | `src/harness/daemon.ts:14-18` |
+| **tick 做什么** | 读 store → 算 stuck + drift → 逐个分派 → 记指标 | `watchdog.ts:110-131` |
+| **空闲也是信号** | `hits.length === 0` → `metrics.increment('watchdog.idle')` | `watchdog.ts:118-121` |
+| **依赖注入** | `new Watchdog({ store, engine, journal, metrics, log, intervalMs, stuckMs, settle, now })` —— **`now` 可注入 ⇒ 可测** | `src/runtime.ts:388-393` |
+| **失败走独立通道** | `engine.watchdogFail(ticketId, reason)` → `kind:'failed', deliver:false`，**与 worker 自己的报告分开** | `src/core/engine.ts:83-89` |
+| **能力边界用类型封死** | watchdog 是被 `seal()` 的**角色端口**，**只能调 `fail`**，拿不到 worker 的操作 | `src/core/role-ports.ts:50-56` |
+| **失败即回滚** | `fail` 时调 `settle(sessionId, verdict)`，`verdict ∈ {deliver, discard, hold}` —— 推测性工作区一起收场 | `watchdog.ts:186-188` |
+| **规则可配置** | `rules.json` → `stuckMsDefault` / `nudgeBeforeFail` / `failAfterFailedJobs` / `driftMarkers`；**加载失败回落默认值** | `src/watchdog/rules.ts:26-51` |
+| **只读健康快照** | `healthProbe()` → `{store, vaultMode, machinesOnline, watchdogIdle}`；注释明写 *"Read-only snapshot; no vault values or runtime startup."* | `src/watchdog/health.ts:8-34` |
+
+> **最妙的一处**：健康端点把 **`watchdogIdle`**（= 没有 stuck assignment 且没有 stuck session）
+> 当成一个健康指标暴露出去 —— **「看门狗闲着」本身就是「一切正常」的证明**。
+> 这比单报「进程还活着」信息量大得多。
+
+---
+
+#### 2.5.2 `harnessrouter`：清扫器 + 心跳地板 + 硬墙钟
+
+**核心作用**：监督「**没有主人照看的轮次**」——
+owner 副本挂了、轮次还在 sandbox 里跑，谁来收场。
+
+**实践方式**：
+- **周期清扫**：`_reconcile_sweep()`，周期 60s（`_RECONCILE_EVERY_S`）
+- **跨副本单飞**：`control_store.try_lock("reconcile-sweep", ...)` 一次 TTL 锁选一个清扫者；
+  **存储挂了 fail OPEN**（照扫 —— 因为扫是幂等的 healer，重复扫无害）
+- **四段判定**（`_reconcile_session`）：
+  1. 查 trace 有没有终态 → 有就结算；
+  2. 主动问 owner「这个 turn 还在吗」→ **404 = 进程已死**；
+     ⚠️ **网络异常 ≠ 死**（`probe_gone = False`，重试而非判死）；
+  3. **收养**（adopt）：owner 死了但轮次还在跑 → **接管**它，继续收割事件；
+  4. 落库结算。
+
+**最该抄的一段：三重地板**（`gateway/app.py:3260-3272`）
+
+```python
+def _sweep_seen(v: dict) -> float:
+    """The session's last sign of life, for the sweep: its heartbeat, floored by its birth ...
+    A heartbeat of 0 read as "never" aged a session from 1970, past the hard cap, and the sweep
+    settled it failed at once (hosted, 2026-10-19: a newborn settled while its sandbox was being
+    placed, then completed 34 s later ...)"""
+    turn_at = float(v.get("turn_at") or 0)
+    born = _born_seconds(v) or (_created_from_prefix(str(v.get("trace_blob") or "")) or 0.0)
+    return max(_hb_seconds(v), born, turn_at)
+```
+
+→ 陈旧判定**不是** `now - heartbeat`，而是 `now - max(心跳, 出生时间, 本轮开始时间)`。
+→ 三者取 max ⇒ **绝不会比本轮开始更旧** ⇒ 永不误杀刚出生的轮次。
+→ 这是 2026-10-19 一次真实事故的修复：newborn 被判失败、34 秒后又 completed。
+
+**第二该抄的：心跳不能延长硬上限**（`app.py:3283-3293`）
+
+```python
+# The hard cap runs from the TURN's start (turn_at, stamped at accept), never from the heartbeat:
+# _turn_slot beats until the runner turn is on record, and a beat that goes on while a restore
+# hangs must not keep the turn alive forever (CAT, 2026-10-21). ...
+stuck = turn_at > 0 and turn_age > _sweep_cap_s() and not str(v.get("runner_turn_id") or "")
+```
+
+**第三该抄的：排队期心跳保活 + 交接棒**（`app.py:891-934`）
+
+- `_turn_slot` 在**进入并发闸门之前**就起一个后台任务刷心跳
+  （间隔 = 陈旧阈值 / 4 = 30s ⇒ 漏拍两次仍不到阈值）；
+- 用一个 `Event` 做**交接棒**：`_RUNNER_TURN_ON[sid]` 被 set（= 轮次已在 runner 侧登记）后，
+  watchdog 的拍**停**，改由轮询循环拍 —— **两个心跳源不重叠**；
+- 闸门释放时 `finally` 里 `on_record.set()` + `task.cancel()` —— **槽位一释放就停拍**。
+
+**事故复盘原文**（`app.py:896-909`）：
+
+> *A queued turn is alive, but it has no runner turn yet and nothing renewed its heartbeat,
+> so the orphan sweep read it as a dead turn and settled it, session and response, as failed;
+> the turn then ran and its final write said completed.*
+
+**第四该抄的：反误杀的四个防线**（`app.py:3446-3509`）
+
+1. **主人在收尾 ≠ 主人已死** —— 终态 + 心跳新鲜 → **不动它**
+   （主人会自己写完整记录，含 output 与 usage）；
+2. **写前重读** —— 结算前重读；已经是终态就**让位**（主人赢了就不写）；
+3. **不发明诊断** —— 分不清「被切断」和「干净结束但没输出」时**原因留空**：
+   > *the SaaS port shipped "interrupted" on its equivalent branch and caught it within the hour:
+   > a max_step=1 turn ended cleanly 'done' in 71s with empty output, nothing cut,
+   > and the API confidently called it interrupted.*
+4. **被动 + 主动混合** —— 被动（trace 终态）优先；无结论才主动问 owner；**网络异常不算死亡**。
+
+**附：一个纯标准库的就绪探针**（`runner/openhands_driver.py:178-189`）——
+零依赖，与哨兵 `http.server` + `threading` 栈完全同构：
+
+```python
+def _wait_alive(port: int, proc: subprocess.Popen, deadline: float) -> bool:
+    """/alive needs no key and answers as soon as the app is mounted ..."""
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return False                      # 目标进程先死了 —— 别再等超时
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/alive", timeout=2):
+                return True
+        except (urllib.error.URLError, OSError):
+            time.sleep(0.1)
+    return False
+```
+
+---
+
+#### 2.5.3 `dsh-omni-router`：预算护栏，**不是** watchdog
+
+**核心作用**：不监督「谁还活着」，只监督「**资源还剩多少**」。
+
+`src/agent-runtime.mjs:194-203` 的 `statusFromBudget()` —— **8 个维度，任一触顶即停**：
+
+| 维度 | 常量 |
+|---|---|
+| 墙钟 | `maxWallClockMs` |
+| 步数 | `maxSteps` |
+| Token | `maxTokens` |
+| 花费 | `maxCost` |
+| 工具调用 | `maxToolCalls` |
+| 重规划 | `maxReplans` |
+| 修复 | `maxRepairs` |
+| 同动作重试 | `maxSameActionRetries` |
+
+**没有**：任务级超时、任务取消（`Promise.all` 无取消）、心跳、熔断。
+**有的是**：失败恢复策略（§4.8 的 6 分支级联）+ 策略切换。
+
+> 哨兵对照：这一类**哨兵已经有了** —— `src/core/priority_queue.py` 的 `max_pending`
+> 就是「预算护栏」的排队版。
+
+---
+
+#### 2.5.4 `dsh-router`：没有 watchdog
+
+只有 `src/sub2api.ts:54` 的 `REQUEST_TIMEOUT_MS = 15_000` + `AbortSignal.timeout(...)`
+（单次 HTTP 请求超时），**没有任何周期性观察**。
+
+附带一条值得抄的小设计（`:193`）：`idempotencyKey`
+—— **让重试变安全**，而不是靠「不重试」来保安全。
+
+---
+
+#### 2.5.5 与哨兵现有 watchdog 的差距
+
+哨兵现有：`src/core/engine_watchdog.py` 的 `EngineWatchdog` ——
+探活**本地推理引擎**（`GET /models`），掉线发红色告警、恢复也报一声、另有 `_try_restart()`。
+
+| 维度 | 哨兵现有 | 四家能补的 |
+|---|---|---|
+| **监督对象** | 只有「本地推理引擎」这一个外部依赖 | **Agent 会话 / 任务**（super-agent 的 assignment、harnessrouter 的 turn） |
+| **判定方式** | 主动探活（活性探测型） | 心跳超时型 —— **判「不动」比判「探不到」更可靠** |
+| **误杀保护** | ❌ 无 | ✅ 三重地板 + 写前重读 + 幂等让位（harnessrouter） |
+| **人为暂停豁免** | ❌ 无 | ✅（super-agent `collab.paused`） |
+| **进展 ≠ 豁免** | ❌ 无 | ✅（super-agent；数据模型里写死的不变量） |
+| **两阶段升级** | ❌（掉线直接告警） | ✅ nudge → fail（super-agent） |
+| **硬上限与心跳的关系** | ❌ 无 | ✅ 硬上限从「开始」起算，心跳不能续命（harnessrouter） |
+| **空闲即健康** | ❌ 无 | ✅ `watchdogIdle`（super-agent `healthProbe`） |
+| **退避 jitter** | ✅ 哨兵自己已有 | ❌ 两家都没有（harnessrouter 全仓无 `import random`）—— **抄的时候要自己补** |
+
+---
+
+#### 2.5.6 顺带发现：活性感知放置（super-agent `src/harness/mesh.ts`）
+
+`WorkerMeshRegistry` —— **77 行**，纯数据结构：
+
+- `markOnline(nodeId, online)` —— **活性标记**；
+- `pickNode(ticketId)` —— 已分配的先复用（除非 offline）→ 否则挑**负载最低的在线且有余量**的节点；
+- `unregister(nodeId)` —— 注销节点时**清理它的所有 assignment**（不留悬挂引用）；
+- `inFlight(nodeId)` —— 负载统计。
+
+> 这是「**watchdog 的判定结果喂给路由器**」的最小样本：
+> 活性不是一个独立的监控台账，而是**路由决策的一个输入**。
+
+---
+
 ## 3. 各项目机制对比表
 
 | 机制 | `dsh-omni-router` | `harnessrouter` | `deepseek-super-agent` | `dsh-router` | **哨兵现状** |
@@ -249,6 +496,17 @@ recordCapabilityOutcome(): EMA 更新成功率
 | **事件旁路主路径** | ✅ | ✅ | ✅ | — | ✅ `EventHub` |
 | **证据信任分级** | ✅ **T0–T4，provider 不得自报 T4** | ⚠️ UHP 证据区分 | ⚠️ | — | ❌ |
 | **与会话绑定的并发互斥** | ❌ | ✅ **fencing 租约** | ⚠️ | — | ⚠️ 指纹隔离，但无租约 |
+| **watchdog 哲学** | 预算护栏（8 维） | 心跳超时 + 清扫器 | **心跳超时 + 两阶段升级（唯一成体系）** | ❌ 无 | 活性探测（只探引擎） |
+| **心跳/存活信号** | ❌ 无 | ✅ 双机制（vertex heartbeat + lease） | ✅ `session.heartbeat` | ❌ 无 | ❌ 无 |
+| **陈旧判定** | ❌ | ✅ **三重地板** `max(心跳,出生,本轮开始)` | ✅ `max(报告时间,开始时间)` | ❌ | ❌ |
+| **人为暂停豁免** | ❌ | ❌ | ✅ `collab.paused` | ❌ | ❌ |
+| **进展 ≠ 豁免** | ❌ | ❌ | ✅ **写进数据模型的不变量** | ❌ | ❌ |
+| **两阶段升级（轻推→判死）** | ❌ | ❌ | ✅ **nudge → fail** | ❌ | ❌ |
+| **硬上限与心跳的关系** | ✅ 墙钟独立 | ✅ **上限从开始起算，心跳不能续命** | ❌ | ❌ | ❌ |
+| **误杀保护** | — | ✅ 写前重读 + 幂等让位 + 不发明诊断 | ✅ 暂停豁免 | — | ❌ |
+| **空闲即健康** | ❌ | ⚠️ `/readyz` 报告 redis 但**不门禁** | ✅ **`watchdogIdle`** | ❌ | ❌ |
+| **僵尸子进程回收** | ❌ | ✅ 环境变量 marker + `/proc` 扫描 + SIGSTOP→杀子孙 | ❌ | ❌ | ❌ |
+| **退避 jitter** | ❌ | ❌ **全仓无 `import random`** | ❌ | ❌ | ✅ 哨兵已有 |
 
 ---
 
@@ -348,6 +606,64 @@ export function assignEvidenceTrust(record = {}, { policyGrantedT4 = false } = {
 - **落点**：`src/llm/base.py`（L2 判定失败后的降级/重试路径）
 - **价值**：哨兵 v5.0.0 已有降级路径，但**没有"同类失败 ≥2 次就换策略"这条**，容易在同一个坏点上反复调模型
 
+### 4.9 ★ watchdog 可用资产（本轮新增）
+
+> **前置**：哨兵现有 `src/core/engine_watchdog.py` 只探活**本地推理引擎**
+> （`GET /models`），**完全不监督 Agent 会话**。
+> 而「跑偏 / 卡死 / 没人管」恰恰发生在会话层 —— 这是本轮要补的主缺口。
+
+#### ★⑨ 三态判定 + 两阶段升级（nudge → fail）
+- **出处**：`deepseek-super-agent/src/watchdog/watchdog.ts:39-73`（三态判定）、`:117-127`（分派）、`:135-142`（nudge）、`:183-198`（fail）
+- **落点**：`src/core/session_server.py`（会话级 watchdog），或新建 `src/core/session_watchdog.py`
+- **怎么改**：三态 `stale` / `failed_jobs` / `goal_drift`；
+  **第一次**检测到 → nudge（往会话日志追加一条 `role=user` 的追问消息，**不杀进程**）；
+  **第二次**仍卡 → fail。用 `set` 保证每个会话**只 nudge 一次**（幂等，不反复骚扰）
+- **复杂度**：`O(S)`（S = 会话数）
+- **价值**：**本轮最该抄的一段** —— 它把「卡住」从「进程死了」里剥了出来。
+  ⚠️ 抄的时候**必须**带上两条豁免：人为暂停（`collab.paused`）跳过；「我还在干」只是心跳、**不是免死金牌**
+
+#### ★⑩ 陈旧判定的三重地板（防误杀）
+- **出处**：`harnessrouter/gateway/app.py:3260-3272`（`_sweep_seen`）、`:3283-3293`（硬上限从 `turn_at` 起算）
+- **落点**：同上
+- **怎么改**：
+  ```python
+  seen = max(心跳时间, 会话创建时间, 本轮开始时间)   # 三者取 max
+  ```
+  ⇒ **绝不会比本轮开始更旧** ⇒ 永不误杀刚出生的会话。
+  硬上限从「本轮开始」起算，**心跳不许续命**。
+- **为什么**：harnessrouter 的注释里记着一次真实事故 ——
+  *a newborn settled while its sandbox was being placed, then completed 34 s later*
+- **复杂度**：`O(1)`/会话
+
+#### ★⑪ 排队期心跳保活 + 交接棒
+- **出处**：`harnessrouter/gateway/app.py:891-934`（`_turn_slot`）
+- **落点**：`src/daemon/context.py`（`l2_sleeping` 会话）
+- **怎么改**：进闸门**之前**起一个后台线程刷心跳（间隔 = 陈旧阈值 / 4 ⇒ 漏拍两次仍不到阈值）；
+  用 `threading.Event` 做**交接棒**，避免两个心跳源重叠
+- **前提**：哨兵目前**没有会话回收逻辑** ⇒ 暂不需要，
+  但**必须写进设计文档**：将来加回收时，这条约束会直接决定「谁被误杀」
+
+#### ★⑫ 反误杀四防线
+- **出处**：`harnessrouter/gateway/app.py:3446-3509`
+- **落点**：会话级 watchdog 的结算路径
+- **怎么改**：
+  1. **主人在收尾 ≠ 主人已死** —— 有终态且心跳新鲜 → **不动它**；
+  2. **写前重读** —— 结算前重读，已是终态就**让位**；
+  3. **不发明诊断** —— 分不清「被切断」和「干净结束但没输出」时**原因留空**；
+  4. **网络异常 ≠ 死亡** —— 主动探测失败只重试，不判死
+
+#### ★⑬ 空闲即健康（`watchdogIdle`）
+- **出处**：`deepseek-super-agent/src/watchdog/health.ts:8-34`
+- **落点**：`src/daemon/server.py` 的 `/api/health`
+- **怎么改**：健康响应加一个 `watchdog_idle: bool` —— **没有卡住的会话 = 一切正常**
+- **价值**：比「进程还活着」信息量大得多；而且它是**只读**的，不触发任何副作用
+
+#### ☆⑭ 活性感知放置（活性喂给路由）
+- **出处**：`deepseek-super-agent/src/harness/mesh.ts`（`WorkerMeshRegistry`，**77 行**）
+- **怎么改**：`markOnline(nodeId, online)` + `pickNode()` 挑**负载最低的在线且有余量**的节点；
+  节点注销时**一并清理它的 assignment**（不留悬挂引用）
+- **落点**：将来哨兵有多 Worker 时；`src/core/session_server.py` 的 `SessionRegistry` 已经是同类结构
+
 ---
 
 ## 5. 不兼容警告
@@ -414,6 +730,23 @@ export function assignEvidenceTrust(record = {}, { policyGrantedT4 = false } = {
 - **分类值不枚举，只做不透明字符串**（`uhp-2026-10-19.schema.json:154-162`）——最不重要的一条其实是：**不要把 `bugfix/feature/review` 硬编码进协议**，留作开放字符串，便于扩展。
 - **「忽略必须可观测」**：网关接受但不处理的请求字段，要在 `metadata.ignored_fields` 里如实告知（`tasks.md` 1.1）——**对应哨兵的「沉默丢弃」问题，与 §4.4 的丢计数同源**。
 
+### 5.5 watchdog 专属的不兼容警告（本轮新增）
+
+| 绑定 | 出处 | 为什么不能照抄 | `threading` + 标准库替代 |
+|---|---|---|---|
+| **`setInterval` 定时器** | `super-agent/src/harness/daemon.ts:17` | Node 的定时器不阻塞、可在事件循环里重复注册 | `threading.Timer`（**一次性**）+ 循环自注册；或一个常驻守护线程 `while not stop.wait(interval): tick()` —— `Event.wait(timeout)` 天然可中断，比 `Timer` 好 |
+| **`seal()` 角色端口** | `super-agent/src/core/role-ports.ts:50-56` | TypeScript 的编译期能力封禁 | Python 用 **`typing.Protocol`** 声明 watchdog **只能**有 `fail()`，再靠**依赖注入**只给它这一个方法 —— 边界靠「不给」而不是靠「不许」 |
+| **sqlite store** | `super-agent/src/store/sqlite.ts` | 它的心跳存在库里 | 哨兵会话状态**已在内存**（`session_server.py` 的 `SessionRegistry`）⇒ **直接存内存字典即可**，不必引 sqlite |
+| **`asyncio` 全家** | `harnessrouter/gateway/` | 哨兵是 `threading` 栈 | `asyncio.Queue`→`queue.Queue`；`asyncio.Semaphore`→`threading.Semaphore`；`asyncio.Event`→`threading.Event`；`asyncio.wait_for`→`q.get(timeout=)`；`asyncio.create_task`→`threading.Thread` |
+| **`/proc` 扫描** | `harnessrouter` 的僵尸子进程回收 | ⚠️ **Linux 专有**，Windows 上根本不存在这个路径 | Windows 侧改用 `taskkill /T /F`（按 PID 杀整棵树）或 WMI `Win32_Process` 查父子关系 —— 哨兵 v5.0.1 的 `single_instance` 已经用 `Toolhelp32` 做过一次父子关系判定，可复用 |
+| **`SIGSTOP` → 杀子孙** | 同上 | **POSIX 信号，Windows 没有** | 用 `psutil`（需加依赖）或 `taskkill /T`；哨兵当前依赖数只有 4 个，**建议不引 psutil**，改用 `taskkill /T` |
+| **`AbortSignal.timeout`** | `dsh-router/src/sub2api.ts:54` | Python 没有 AbortSignal | `urllib.request.urlopen(..., timeout=15)`；要可取消就自己管 `threading.Event` |
+| **FastAPI `/readyz`** | `harnessrouter/gateway/app.py` | 依赖 FastAPI | 哨兵已有 `src/daemon/server.py` 的 `/api/health` —— **直接在那里加 `watchdog_idle` 字段**即可 |
+| **`Promise.all` 无取消** | `dsh-omni-router/src/agent-runtime.mjs:213` | 取消不了已经在跑的批次 | Python 必须显式处理：`threading` 用**取消令牌 + 协作式退出**（哨兵 `priority_queue.py` 的 `CancelToken` 已经是这个形态）；`asyncio` 则必须 `gather(..., return_exceptions=True)` |
+
+> ⚠️ **跨平台的最大一条**：harnessrouter 的**僵尸子进程回收**整套依赖 `/proc` + `SIGSTOP`，
+> **在 Windows 上不可用**。抄它的**判定逻辑**可以，抄**执行手段**必须重写。
+
 ---
 
 ## 6. 落地建议：极简 `TaskRouter`
@@ -477,6 +810,28 @@ class TaskRouter:
 - **`dsh-omni-router` 与 `harnessrouter` 都没有优先级队列**——**不要指望从它们抄到优先级实现**；这部分哨兵领先，照抄反而是倒退。
 - **`harnessrouter` 明确没有熔断器**（`runner/patches/hermes_mcp_breaker.py` 是给第三方 CLI 打的补丁，不是本仓代码）。哨兵若将来需要熔断，得自己写。
 
+### 6.5 watchdog 落地路线（本轮新增）
+
+> **与 §6.3 的 S 阶段并行，互不依赖** —— watchdog 只吃会话状态，
+> 不需要 `TaskRouter` 先落地。可以同时开工。
+
+| 阶段 | 内容 | 依据 | 验收 |
+|---|---|---|---|
+| **W1**（半天） | `/api/health` 增加 `watchdog_idle` 字段（**只读**，零副作用） | §4.9 ★⑬ | 健康端点能报出「没有卡住的会话」 |
+| **W2**（1 天） | 会话级**三态判定**（`stale` / `failed_jobs` / `goal_drift`）+ **三重地板** + 两条豁免（人为暂停、进展≠豁免）。**先只判定、不干预** | §4.9 ★⑨ ★⑩ | 人为制造一个「心跳停更」的会话能被认出来；新建会话不会被误判 |
+| **W3**（1 天） | **两阶段升级**：先 nudge（往会话日志追加一条追问），仍不醒才 fail；每个会话**只 nudge 一次** | §4.9 ★⑨ | nudge 后会话恢复 ⇒ 不再升级；不恢复 ⇒ 只升级一次 |
+| **W4**（1 天） | 失败**结算与回滚** + **硬上限从「本轮开始」起算**（心跳不许续命）+ 反误杀四防线 | §4.9 ★⑩ ★⑫ | 心跳持续刷新但超过硬上限 ⇒ 仍然判死；结算前重读，已终态则让位 |
+
+> ⚠️ **W2 之前必须先做一件事**：把「会话心跳」写进 `SessionRegistry`。
+> 哨兵目前**没有任何会话心跳** —— 现有的只有**引擎**心跳（`engine_watchdog.py`）。
+> 没有会话心跳，W2 无从谈起。
+>
+> ⚠️ **W3 的 nudge 有一条安全红线**：nudge 是**往会话日志里追加一条消息**，
+> **不是**向 Agent 发指令、**不是**杀进程、**不是**动文件。
+> 哨兵是**只读观察者**（§4.9 之外那条红线，v5.0.0 就定死了）——
+> **写会话日志这一步要单独评估**：它算不算「写入被监控方」，
+> 需要在设计时明确表态，不能默认。
+
 ---
 
 ## 7. 风险与免责
@@ -486,3 +841,14 @@ class TaskRouter:
 3. **`harnessrouter` 的 `gateway/` 是生产级网关**（含租户隔离、计费、多副本），其并发/背压设计**远比哨兵所需复杂**。§4.3 的租约算法**可以整体摘出**（纯逻辑），但**信号量双闸门、跨副本追尾、Redis pub/sub 不要照搬**——哨兵是单进程无头守护进程。
 4. **`临时/` 目录下的源码未被修改**，本次仅执行只读的文件枚举、文本读取与内容检索。
 5. **上游许可需在真正复制代码前复核**：本次**未复制任何上游源码**，只提取算法与设计思路。若后续要粘贴具体实现片段，需先核对各仓 `LICENSE`（`dsh-omni-router` MIT、`harnessrouter` 见其仓内声明、`deepseek-super-agent` MIT、`dsh-router` MIT）并履行署名义务。
+6. **watchdog 章节（§2.5 / §4.9 / §5.5 / §6.5）的额外免责**：
+   - `deepseek-super-agent` 的 watchdog **有完整单测**（`test/watchdog-fail.test.ts`、
+     `test/health.test.ts`），但**本次仍未执行** —— §2.5 引用的行为契约是**读测试代码得出的**，
+     不是「跑出来的绿灯」。
+   - `harnessrouter` 的 watchdog 机制**大量依赖其自身的生产事故复盘**（代码注释里记着
+     2026-10-19 / 2026-10-21 两次误杀）。这些注释是**上游作者的自述**，
+     本次**未做独立复现**，抄的时候应把它当**设计意图**而不是**已验证结论**。
+   - 两家都**没有**退避 jitter（`harnessrouter` 全仓无 `import random`）——
+     哨兵自己已有，**别把上游的缺陷一起抄进来**。
+   - `harnessrouter` 的僵尸回收依赖 **`/proc` + `SIGSTOP`**（Linux 专有），
+     Windows 上**必须重写执行手段**（见 §5.5）。
